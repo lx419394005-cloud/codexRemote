@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Codex Remote</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+  if (typeof marked !== 'undefined') {
+    marked.setOptions({ breaks: true, gfm: true });
+  }
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg-primary: #07111f;
+    --bg-secondary: rgba(9, 20, 37, 0.82);
+    --bg-tertiary: rgba(19, 36, 61, 0.9);
+    --bg-soft: rgba(12, 24, 42, 0.72);
+    --bg-hover: rgba(33, 58, 96, 0.88);
+    --panel-strong: rgba(8, 18, 33, 0.96);
+    --border: rgba(126, 163, 219, 0.16);
+    --border-active: rgba(117, 180, 255, 0.52);
+    --border-soft: rgba(126, 163, 219, 0.1);
+    --text-primary: #eff6ff;
+    --text-secondary: #bed0ea;
+    --text-muted: #7f94b4;
+    --text-strong: #f8fbff;
+    --accent: #5ea2ff;
+    --accent-hover: #87b9ff;
+    --accent-bg: rgba(94, 162, 255, 0.16);
+    --green: #22c55e;
+    --green-bg: rgba(34, 197, 94, 0.1);
+    --red: #ef4444;
+    --red-bg: rgba(239, 68, 68, 0.1);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234, 179, 8, 0.1);
+    --purple: #f59e0b;
+    --purple-bg: rgba(245, 158, 11, 0.12);
+    --cyan: #67e8f9;
+    --code-bg: #0f172a;
+    --radius: 10px;
+    --radius-lg: 18px;
+    --shadow: 0 20px 50px rgba(2, 8, 23, 0.32);
+  }
+  body {
+    font-family: 'SF Pro Display', 'Inter', 'Segoe UI', sans-serif;
+    background:
+      radial-gradient(circle at top left, rgba(94, 162, 255, 0.18), transparent 30%),
+      radial-gradient(circle at top right, rgba(103, 232, 249, 0.14), transparent 28%),
+      linear-gradient(180deg, #08101c 0%, #0b1527 52%, #07111f 100%);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Header */
+  #header {
+    background: rgba(6, 13, 24, 0.72);
+    backdrop-filter: blur(24px);
+    padding: 0 18px;
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #header .logo {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #header .logo span {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    background: linear-gradient(135deg, rgba(94, 162, 255, 0.18), rgba(103, 232, 249, 0.2));
+    color: var(--accent);
+    -webkit-text-fill-color: initial;
+  }
+  #status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  #status-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  #status-dot.connecting { background: var(--yellow); animation: pulse 1.5s infinite; }
+  #status-dot.disconnected { background: var(--red); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .status-shell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid var(--border);
+  }
+  #status-text { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
+  #header .spacer { flex: 1; }
+  #model-badge, #workspace-chip {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--cyan);
+    font-weight: 600;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  #workspace-chip {
+    color: var(--text-secondary);
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #sidebar-toggle {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 8px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+  }
+  #sidebar-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* Main Layout */
+  #layout { flex: 1; display: flex; overflow: hidden; gap: 16px; padding: 16px; }
+
+  /* Sidebar */
+  #sidebar {
+    width: 300px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: width 0.2s, transform 0.2s;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(24px);
+  }
+  #sidebar.collapsed { width: 0; border: none; margin-right: -16px; }
+  .sidebar-section { padding: 14px; border-bottom: 1px solid var(--border); }
+  .sidebar-section h3 { font-size: 10px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.8px; margin-bottom: 8px; font-weight: 700; }
+  .sidebar-section .section-actions { display: flex; gap: 6px; }
+  .sidebar-section .section-actions button { flex: 1; background: linear-gradient(135deg, var(--accent), #7cc8ff); color: #06101e; border: none; border-radius: 10px; padding: 8px; font-size: 11px; cursor: pointer; font-weight: 700; font-family: inherit; transition: transform 0.15s, opacity 0.15s; }
+  .sidebar-section .section-actions button:hover { background: var(--accent-hover); }
+  .sidebar-section .section-actions button.secondary { background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); }
+  .sidebar-section .section-actions button.secondary:hover { background: var(--bg-hover); color: var(--text-primary); }
+  #thread-list { flex: 1; overflow-y: auto; padding: 8px; min-height: 0; }
+  .thread-item {
+    padding: 12px 12px 12px 14px;
+    border-radius: 14px;
+    cursor: pointer;
+    margin-bottom: 8px;
+    transition: background 0.12s, border-color 0.12s, transform 0.12s;
+    border: 1px solid transparent;
+    background: rgba(7, 17, 31, 0.48);
+  }
+  .thread-item:hover { background: var(--bg-tertiary); border-color: rgba(117, 180, 255, 0.16); transform: translateY(-1px); }
+  .thread-item.active { background: linear-gradient(135deg, rgba(94, 162, 255, 0.16), rgba(103, 232, 249, 0.08)); border-color: rgba(117, 180, 255, 0.34); }
+  .thread-item .thread-title { font-size: 12px; color: var(--text-primary); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .thread-item .thread-meta { font-size: 10px; color: var(--text-muted); margin-top: 5px; display: flex; align-items: center; gap: 6px; }
+  .thread-item .thread-status { font-size: 10px; }
+
+  /* Workspace */
+  #workspace-section { border-top: 1px solid var(--border); flex-shrink: 0; max-height: 40%; overflow-y: auto; }
+  #workspace-path { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; padding: 9px 12px; background: rgba(7, 17, 31, 0.72); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'SF Mono', 'Fira Code', monospace; display: flex; align-items: center; gap: 6px; }
+  #workspace-path:hover { color: var(--text-primary); }
+  #file-tree { font-size: 12px; padding-bottom: 12px; }
+  .tree-item { padding: 5px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); border-radius: 8px; margin: 2px 4px; display: flex; align-items: center; gap: 6px; }
+  .tree-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .tree-item.folder { color: var(--yellow); }
+  .tree-item.file { color: var(--text-secondary); }
+  .tree-children { padding-left: 12px; }
+  .tree-children.collapsed { display: none; }
+
+  /* Chat Area */
+  #chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(24px);
+  }
+
+  /* Toolbar */
+  #toolbar { background: rgba(5, 13, 24, 0.76); padding: 12px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
+  #toolbar select { background: rgba(7, 17, 31, 0.9); border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); padding: 8px 10px; font-size: 12px; cursor: pointer; font-family: inherit; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237f94b4' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 28px; }
+  #toolbar select:hover { border-color: var(--border-active); }
+  #toolbar select:focus { outline: none; border-color: var(--accent); }
+  #toolbar .spacer { flex: 1; }
+  #turn-indicator { font-size: 11px; padding: 8px 12px; border-radius: 999px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; }
+  #turn-indicator.idle { background: transparent; color: var(--text-muted); }
+  #turn-indicator.running { background: var(--yellow-bg); color: var(--yellow); }
+  #turn-indicator.done { background: var(--green-bg); color: var(--green); }
+  #turn-indicator.error { background: var(--red-bg); color: var(--red); }
+
+  /* Messages */
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    scroll-behavior: smooth;
+  }
+  .msg-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .msg-wrapper.user {
+    align-items: flex-end;
+  }
+  .msg-wrapper.agent,
+  .msg-wrapper.reasoning-block {
+    align-items: stretch;
+  }
+  .msg-card {
+    width: min(100%, 920px);
+    padding: 18px 20px;
+    border: 1px solid var(--border-soft);
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(8, 18, 33, 0.92), rgba(7, 17, 31, 0.88));
+    box-shadow: 0 16px 36px rgba(2, 8, 23, 0.18);
+  }
+  .msg-wrapper.user .msg-card {
+    max-width: min(100%, 760px);
+    background: linear-gradient(180deg, rgba(23, 49, 84, 0.96), rgba(16, 36, 63, 0.92));
+    border-color: rgba(117, 180, 255, 0.18);
+  }
+  .msg-wrapper.agent .msg-card,
+  .msg-wrapper.reasoning-block .msg-card {
+    background: linear-gradient(180deg, rgba(8, 18, 33, 0.98), rgba(7, 17, 31, 0.94));
+  }
+  .msg-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .msg-avatar { width: 28px; height: 28px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .msg-avatar.user { background: linear-gradient(135deg, var(--accent), #7cc8ff); color: #06101e; }
+  .msg-avatar.agent { background: var(--purple-bg); color: var(--purple); }
+  .msg-role { font-size: 12px; font-weight: 700; color: var(--text-strong); }
+  .msg-time { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+  .msg-content { font-size: 14px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; color: var(--text-primary); }
+  .msg-content > :first-child { margin-top: 0; }
+  .msg-content > :last-child { margin-bottom: 0; }
+  .msg-content code {
+    background: rgba(15, 23, 42, 0.95);
+    color: #d8e8ff;
+    padding: 0.18em 0.45em;
+    border-radius: 7px;
+    border: 1px solid rgba(126, 163, 219, 0.14);
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+  }
+  .msg-content pre {
+    background: var(--code-bg);
+    padding: 16px 18px;
+    border-radius: 0 0 16px 16px;
+    overflow-x: auto;
+    margin: 0;
+    border-top: 1px solid rgba(126, 163, 219, 0.08);
+  }
+  .msg-content pre code { background: none; padding: 0; }
+  .msg-content h1, .msg-content h2, .msg-content h3, .msg-content h4 {
+    margin: 22px 0 10px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--text-strong);
+  }
+  .msg-content h1 { font-size: 24px; }
+  .msg-content h2 { font-size: 20px; }
+  .msg-content h3 { font-size: 17px; }
+  .msg-content h4 { font-size: 15px; }
+  .msg-content p { margin: 10px 0; color: var(--text-primary); }
+  .msg-content ul, .msg-content ol { padding-left: 24px; margin: 12px 0; }
+  .msg-content li { margin: 6px 0; padding-left: 4px; }
+  .msg-content blockquote {
+    margin: 14px 0;
+    padding: 12px 16px;
+    border-left: 3px solid rgba(117, 180, 255, 0.44);
+    background: rgba(12, 24, 42, 0.74);
+    border-radius: 0 14px 14px 0;
+    color: var(--text-secondary);
+  }
+  .msg-content table { border-collapse: collapse; width: 100%; min-width: 560px; margin: 0; }
+  .msg-content th, .msg-content td {
+    border: 1px solid rgba(126, 163, 219, 0.14);
+    padding: 10px 12px;
+    text-align: left;
+    font-size: 12px;
+    vertical-align: top;
+  }
+  .msg-content th { background: rgba(18, 35, 58, 0.96); font-weight: 700; color: var(--text-strong); }
+  .msg-content tr:nth-child(even) td { background: rgba(10, 22, 40, 0.5); }
+  .msg-content a { color: var(--accent); text-decoration: none; }
+  .msg-content a:hover { text-decoration: underline; color: var(--accent-hover); }
+  .msg-content img { max-width: 100%; border-radius: 14px; margin: 12px 0; border: 1px solid var(--border-soft); }
+  .msg-content hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+  .msg-content strong { color: var(--text-strong); }
+  .msg-content .table-wrap {
+    margin: 14px 0;
+    overflow-x: auto;
+    border: 1px solid rgba(126, 163, 219, 0.14);
+    border-radius: 16px;
+    background: rgba(7, 17, 31, 0.72);
+  }
+  .msg-content .code-block {
+    margin: 16px 0;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid rgba(126, 163, 219, 0.14);
+    background: linear-gradient(180deg, rgba(10, 22, 40, 0.98), rgba(8, 18, 33, 0.96));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .msg-content .code-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: rgba(12, 24, 42, 0.94);
+    color: var(--text-secondary);
+    font-size: 11px;
+    border-bottom: 1px solid rgba(126, 163, 219, 0.08);
+  }
+  .msg-content .code-lang {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--cyan);
+    font-weight: 700;
+  }
+  .msg-content .code-copy {
+    border: 1px solid rgba(126, 163, 219, 0.14);
+    background: rgba(7, 17, 31, 0.88);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .msg-content .code-copy:hover {
+    color: var(--text-primary);
+    border-color: rgba(117, 180, 255, 0.26);
+    background: rgba(15, 29, 48, 0.96);
+  }
+  .msg-content .code-copy.copied {
+    color: #06101e;
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* Reasoning panel */
+  .reasoning-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; background: var(--purple-bg); border: 1px solid rgba(245, 158, 11, 0.22); border-radius: 999px; cursor: pointer; font-size: 11px; color: var(--purple); font-weight: 700; margin-bottom: 12px; user-select: none; transition: background 0.15s; }
+  .reasoning-toggle:hover { background: rgba(168, 85, 247, 0.15); }
+  .reasoning-toggle .arrow { transition: transform 0.2s; font-size: 10px; }
+  .reasoning-toggle .arrow.open { transform: rotate(90deg); }
+  .reasoning-content { font-size: 12px; line-height: 1.7; color: var(--text-muted); padding: 14px 16px; background: var(--bg-primary); border-radius: 16px; margin-bottom: 0; white-space: pre-wrap; word-break: break-word; display: none; border: 1px solid rgba(126, 163, 219, 0.1); }
+  .reasoning-content.visible { display: block; }
+
+  .msg.system {
+    align-self: center;
+    max-width: min(100%, 760px);
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 8px 14px;
+    margin: 2px 0;
+    border-radius: 999px;
+    background: rgba(10, 22, 40, 0.78);
+    border: 1px solid rgba(126, 163, 219, 0.1);
+  }
+  .msg.system.error { color: #fecaca; border-color: rgba(239, 68, 68, 0.2); background: rgba(77, 18, 18, 0.34); }
+  .msg.system.success { color: #bbf7d0; border-color: rgba(34, 197, 94, 0.18); background: rgba(14, 47, 31, 0.4); }
+
+  /* Welcome screen */
+  #welcome { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr); gap: 18px; align-items: stretch; padding: 28px; }
+  #welcome .welcome-hero,
+  #welcome .shortcuts { background: linear-gradient(180deg, rgba(10, 22, 40, 0.92), rgba(8, 18, 33, 0.88)); border: 1px solid var(--border); border-radius: 24px; padding: 24px; box-shadow: var(--shadow); }
+  #welcome .welcome-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--cyan); padding: 6px 10px; border-radius: 999px; background: rgba(103, 232, 249, 0.08); margin-bottom: 14px; }
+  #welcome .logo-large { font-size: 44px; margin-bottom: 14px; opacity: 0.95; }
+  #welcome h2 { font-size: 32px; color: var(--text-primary); margin-bottom: 10px; font-weight: 700; letter-spacing: -1px; text-align: left; }
+  #welcome p { font-size: 14px; line-height: 1.7; max-width: 560px; color: var(--text-secondary); text-align: left; }
+  #welcome .hero-grid { margin-top: 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  #welcome .hero-card { padding: 14px; border-radius: 16px; background: rgba(94, 162, 255, 0.08); border: 1px solid rgba(117, 180, 255, 0.16); text-align: left; }
+  #welcome .hero-card strong { display: block; font-size: 13px; margin-bottom: 6px; color: var(--text-primary); }
+  #welcome .hero-card span { font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+  #welcome .prompt-suggestions { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
+  #welcome .prompt-chip { border: 1px solid var(--border); background: rgba(7, 17, 31, 0.88); color: var(--text-secondary); border-radius: 999px; padding: 9px 14px; cursor: pointer; font-size: 12px; transition: transform 0.15s, border-color 0.15s, color 0.15s; }
+  #welcome .prompt-chip:hover { transform: translateY(-1px); border-color: var(--border-active); color: var(--text-primary); }
+  #welcome .shortcuts { text-align: left; display: flex; flex-direction: column; justify-content: space-between; }
+  #welcome .shortcuts-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 14px; }
+  #welcome .shortcut { display: flex; gap: 12px; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary); }
+  #welcome .shortcut:last-child { margin-bottom: 0; }
+  #welcome .shortcut kbd { background: rgba(7, 17, 31, 0.9); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: var(--text-primary); min-width: 90px; text-align: center; font-family: 'SF Mono', 'Fira Code', monospace; }
+  #welcome .shortcut-note { margin-top: 18px; font-size: 12px; line-height: 1.6; color: var(--text-muted); }
+
+  /* Typing indicator */
+  .typing-dots { display: inline-flex; gap: 4px; padding: 4px 0; }
+  .typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: typing 1.4s infinite; }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-6px); opacity: 1; } }
+
+  /* Input Area */
+  #input-area { background: rgba(5, 13, 24, 0.78); padding: 16px 18px 18px; border-top: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-end; flex-shrink: 0; }
+  #composer-shell { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 22px; background: linear-gradient(180deg, rgba(10, 22, 40, 0.96), rgba(7, 17, 31, 0.92)); border: 1px solid var(--border); }
+  #composer-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-muted); }
+  #composer-meta .meta-pill { padding: 5px 8px; border-radius: 999px; background: rgba(94, 162, 255, 0.1); color: var(--text-secondary); }
+  #input-area textarea { flex: 1; background: transparent; border: none; color: var(--text-primary); padding: 0; font-size: 14px; resize: none; height: 44px; max-height: 150px; font-family: inherit; line-height: 1.6; transition: border-color 0.15s, box-shadow 0.15s; }
+  #input-area textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+  #input-area textarea::placeholder { color: var(--text-muted); }
+  #input-area button { background: linear-gradient(135deg, var(--accent), #7cc8ff); color: #06101e; border: none; border-radius: 18px; padding: 0 20px; height: 52px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; transition: background 0.15s, opacity 0.15s, transform 0.15s; display: flex; align-items: center; gap: 6px; box-shadow: 0 18px 32px rgba(8, 113, 255, 0.22); }
+  #input-area button:hover:not(:disabled) { background: var(--accent-hover); }
+  #input-area button:disabled { background: var(--bg-tertiary); color: var(--text-muted); cursor: not-allowed; }
+
+  /* Approval Modal */
+  #approval-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 100; align-items: center; justify-content: center; }
+  #approval-modal.show { display: flex; }
+  #approval-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; max-width: 520px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow); }
+  #approval-box h3 { margin-bottom: 12px; font-size: 15px; color: var(--yellow); font-weight: 600; }
+  #approval-box pre { background: var(--bg-primary); padding: 12px; border-radius: 8px; font-size: 12px; overflow-x: auto; margin-bottom: 16px; white-space: pre-wrap; word-break: break-word; color: var(--text-secondary); font-family: 'SF Mono', 'Fira Code', monospace; }
+  #approval-box .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  #approval-box .actions button { padding: 8px 16px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; font-weight: 500; font-family: inherit; transition: opacity 0.15s; }
+  #approval-box .actions button:hover { opacity: 0.85; }
+  #approval-box .actions .allow { background: var(--green); color: #fff; }
+  #approval-box .actions .deny { background: var(--bg-tertiary); color: var(--text-primary); }
+
+  /* Workspace Modal */
+  #workspace-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 100; align-items: center; justify-content: center; }
+  #workspace-modal.show { display: flex; }
+  #workspace-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; max-width: 520px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow); }
+  #workspace-box h3 { margin-bottom: 12px; font-size: 15px; color: var(--cyan); font-weight: 600; }
+  #workspace-quick-select { margin-bottom: 12px; }
+  #workspace-breadcrumb { margin-bottom: 10px; font-size: 12px; color: var(--text-muted); }
+  #workspace-breadcrumb span { cursor: pointer; color: var(--accent); }
+  #workspace-breadcrumb span:hover { text-decoration: underline; }
+  #workspace-dir-list .dir-item { padding: 8px 12px; cursor: pointer; border-radius: 6px; font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; transition: background 0.1s; }
+  #workspace-dir-list .dir-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  #workspace-dir-list .dir-item::before { content: '📁'; font-size: 14px; flex-shrink: 0; }
+  #workspace-dir-list .dir-item.current::before { content: '📍'; }
+  #workspace-box .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  #workspace-box .actions button { padding: 8px 16px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; font-weight: 500; font-family: inherit; }
+  #workspace-box .actions .allow { background: var(--accent); color: #fff; }
+  #workspace-box .actions .deny { background: var(--bg-tertiary); color: var(--text-primary); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    #layout { padding: 10px; gap: 10px; }
+    #header { min-height: 56px; padding: 0 12px; }
+    #workspace-chip { display: none; }
+    #sidebar { position: fixed; left: 10px; top: 66px; bottom: 10px; z-index: 50; width: min(320px, calc(100vw - 20px)); transform: translateX(-108%); transition: transform 0.2s; }
+    #sidebar.open { transform: translateX(0); }
+    #sidebar.collapsed { transform: translateX(-100%); }
+    #welcome { grid-template-columns: 1fr; padding: 16px; }
+    #welcome h2 { font-size: 26px; }
+    #welcome .hero-grid { grid-template-columns: 1fr; }
+    #toolbar { padding: 12px; }
+    #messages { padding: 12px; gap: 10px; }
+    .msg-card { width: 100%; padding: 16px; border-radius: 18px; }
+    #input-area { padding: 12px; align-items: stretch; flex-direction: column; }
+    #input-area button { width: 100%; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <button id="sidebar-toggle" title="Toggle sidebar">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+  </button>
+  <div class="logo"><span>⬡</span> Codex</div>
+  <div class="status-shell">
+    <div id="status-dot" class="disconnected"></div>
+    <span id="status-text">Disconnected</span>
+  </div>
+  <div class="spacer"></div>
+  <span id="workspace-chip">No workspace</span>
+  <span id="model-badge" style="display:none"></span>
+</div>
+
+<div id="layout">
+  <div id="sidebar">
+    <div class="sidebar-section">
+      <h3>Threads</h3>
+      <div class="section-actions">
+        <button id="btn-new-thread">+ New Thread</button>
+        <button id="btn-refresh-threads" class="secondary" title="Refresh">↻</button>
+      </div>
+    </div>
+    <div id="thread-list"></div>
+    <div id="workspace-section">
+      <div class="sidebar-section">
+        <h3>Workspace</h3>
+        <div id="workspace-path" title="Click to browse">.</div>
+        <div id="file-tree"><span style="font-size:11px;color:var(--text-muted);">Not connected</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="chat-area">
+    <div id="toolbar">
+      <select id="model-select"><option value="">Loading...</option></select>
+      <select id="sandbox-select">
+        <option value="workspace-write">workspace-write</option>
+        <option value="read-only">read-only</option>
+        <option value="danger-full-access">danger-full-access</option>
+      </select>
+      <select id="approval-select">
+        <option value="on-request">on-request</option>
+        <option value="untrusted">untrusted</option>
+        <option value="never">never</option>
+      </select>
+      <div class="spacer"></div>
+      <span id="turn-indicator" class="idle">Idle</span>
+    </div>
+
+    <div id="messages">
+      <div id="welcome">
+        <div class="welcome-hero">
+          <div class="welcome-eyebrow">Remote coding cockpit</div>
+          <div class="logo-large">⬡</div>
+          <h2>Code faster with a cleaner bridge UI</h2>
+          <p>Keep threads, workspace context, and approvals in one place. The layout is tuned for quick scanning, long-running turns, and jumping between projects without losing the conversation flow.</p>
+          <div class="hero-grid">
+            <div class="hero-card">
+              <strong>Thread-first</strong>
+              <span>Recent conversations stay visible, with clearer active state and calmer metadata.</span>
+            </div>
+            <div class="hero-card">
+              <strong>Workspace-aware</strong>
+              <span>Browse folders faster and keep the current project path visible in the header.</span>
+            </div>
+            <div class="hero-card">
+              <strong>Execution-ready</strong>
+              <span>Model, sandbox, and approval settings stay close to the composer instead of getting lost.</span>
+            </div>
+          </div>
+          <div class="prompt-suggestions">
+            <button class="prompt-chip" data-prompt="Review this repo and list the highest-risk issues first.">风险 Review</button>
+            <button class="prompt-chip" data-prompt="Refactor the current feature without changing behavior, then explain the diff.">保守重构</button>
+            <button class="prompt-chip" data-prompt="Improve this UI with stronger hierarchy and better mobile spacing.">优化 UI</button>
+          </div>
+        </div>
+        <div class="shortcuts">
+          <div>
+            <div class="shortcuts-title">Fast controls</div>
+            <div class="shortcut"><kbd>Enter</kbd><span>Send message</span></div>
+            <div class="shortcut"><kbd>Shift + Enter</kbd><span>New line</span></div>
+            <div class="shortcut"><kbd>Ctrl/Cmd + L</kbd><span>Clear chat</span></div>
+          </div>
+          <div class="shortcut-note">Tip: start a thread with a concrete task plus a working directory. Codex will keep better continuity when the workspace is already set.</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="input-area">
+      <div id="composer-shell">
+        <div id="composer-meta">
+          <span class="meta-pill">Workspace-aware composer</span>
+          <span>Enter to send, Shift+Enter for a new line</span>
+        </div>
+        <textarea id="prompt-input" placeholder="Ask Codex anything..." rows="1"></textarea>
+      </div>
+      <button id="btn-send" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+        Send
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="approval-modal">
+  <div id="approval-box">
+    <h3>⚠️ Approval Required</h3>
+    <pre id="approval-content"></pre>
+    <div class="actions">
+      <button id="approval-deny" class="deny">Deny</button>
+      <button id="approval-allow" class="allow">Allow</button>
+    </div>
+  </div>
+</div>
+
+<div id="workspace-modal">
+  <div id="workspace-box">
+    <h3>📂 Select Workspace</h3>
+    <div id="workspace-quick-select"></div>
+    <div id="workspace-breadcrumb"></div>
+    <div id="workspace-dir-list"></div>
+    <div class="actions">
+      <button id="workspace-cancel" class="deny">Cancel</button>
+      <button id="workspace-confirm" class="allow">Select This</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const TOKEN = params.get('token') || 'changeme';
+const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const BRIDGE_WS = `${wsProtocol}//${location.host}/?token=${TOKEN}`;
+
+let ws = null;
+let nextId = 1;
+let currentThreadId = null;
+let currentTurnId = null;
+let pendingRequests = new Map();
+let pendingApproval = null;
+let agentMessageEl = null;
+let agentMessageBuffer = '';
+let reasoningEl = null;
+let reasoningBuffer = '';
+let isTurnActive = false;
+let welcomeVisible = true;
+let currentWorkspace = params.get('cwd') || '/Volumes/new/dev/web/codeonline';
+
+const TRUSTED_PROJECTS = [
+  '/Volumes/new/dev/web/codeonline',
+  '/Volumes/new/dev/xcode/qickcoder/QuickRecorder',
+  '/Volumes/new/dev/xcode/hiker',
+  '/Users/loong/Documents/test01',
+  '/Volumes/new/dev/ragTest',
+];
+
+const messagesEl = document.getElementById('messages');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const inputEl = document.getElementById('prompt-input');
+const sendBtn = document.getElementById('btn-send');
+const turnIndicator = document.getElementById('turn-indicator');
+const modelSelect = document.getElementById('model-select');
+const modelBadge = document.getElementById('model-badge');
+const fileTreeEl = document.getElementById('file-tree');
+const threadListEl = document.getElementById('thread-list');
+const sidebar = document.getElementById('sidebar');
+const workspacePathEl = document.getElementById('workspace-path');
+const workspaceChipEl = document.getElementById('workspace-chip');
+const workspaceModal = document.getElementById('workspace-modal');
+const workspaceDirList = document.getElementById('workspace-dir-list');
+const workspaceBreadcrumb = document.getElementById('workspace-breadcrumb');
+
+let workspaceBrowserPath = '/';
+let pendingWorkspace = null;
+
+function clearElement(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function appendTextNode(parent, text) {
+  parent.appendChild(document.createTextNode(text));
+}
+
+function createElement(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function updateWorkspaceBadge(path) {
+  if (!workspaceChipEl) return;
+  workspaceChipEl.textContent = path || 'No workspace';
+  workspaceChipEl.title = path || 'No workspace';
+}
+
+function setStatus(state) {
+  statusDot.className = state;
+  if (state === 'connected') {
+    statusText.textContent = 'Connected';
+  } else if (state === 'connecting') {
+    statusText.textContent = 'Connecting...';
+  } else {
+    statusText.textContent = 'Disconnected';
+  }
+}
+
+function setTurnState(state) {
+  turnIndicator.className = state;
+  if (state === 'running') {
+    turnIndicator.textContent = 'Running';
+  } else if (state === 'done') {
+    turnIndicator.textContent = 'Done';
+  } else if (state === 'error') {
+    turnIndicator.textContent = 'Error';
+  } else {
+    turnIndicator.textContent = 'Idle';
+  }
+}
+
+function formatTime(ts) {
+  if (ts) return new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString();
+}
+
+function renderMarkdown(text) {
+  const normalized = typeof text === 'string' ? text : String(text || '');
+  const safeMarkdown = escapeHtml(normalized);
+  if (typeof marked !== 'undefined') {
+    try {
+      return decorateRenderedMarkdown(marked.parse(safeMarkdown));
+    } catch (e) {
+      return safeMarkdown;
+    }
+  }
+  return safeMarkdown;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function decorateRenderedMarkdown(html) {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+
+  template.content.querySelectorAll('pre').forEach((pre) => {
+    const code = pre.querySelector('code');
+    const languageMatch = code?.className?.match(/language-([\w-]+)/);
+    const language = languageMatch?.[1] || 'text';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'code-block';
+
+    const header = document.createElement('div');
+    header.className = 'code-header';
+
+    const lang = document.createElement('span');
+    lang.className = 'code-lang';
+    lang.textContent = language;
+    header.appendChild(lang);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'code-copy';
+    copyBtn.textContent = 'Copy';
+    copyBtn.dataset.copy = code?.textContent || pre.textContent || '';
+    header.appendChild(copyBtn);
+
+    pre.parentNode.insertBefore(wrapper, pre);
+    wrapper.appendChild(header);
+    wrapper.appendChild(pre);
+  });
+
+  template.content.querySelectorAll('table').forEach((table) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    table.parentNode.insertBefore(wrap, table);
+    wrap.appendChild(table);
+  });
+
+  template.content.querySelectorAll('a').forEach((link) => {
+    link.target = '_blank';
+    link.rel = 'noreferrer noopener';
+  });
+
+  return template.innerHTML;
+}
+
+function addReasoningPanel() {
+  if (welcomeVisible) {
+    const w = document.getElementById('welcome');
+    if (w) w.remove();
+    welcomeVisible = false;
+  }
+  const wrapper = document.createElement('div');
+  wrapper.className = 'msg-wrapper reasoning-block';
+  const card = document.createElement('div');
+  card.className = 'msg-card';
+  const toggle = document.createElement('div');
+  toggle.className = 'reasoning-toggle';
+  const arrow = document.createElement('span');
+  arrow.className = 'arrow';
+  arrow.textContent = '▶';
+  toggle.appendChild(arrow);
+  const label = document.createElement('span');
+  label.textContent = 'Thinking...';
+  toggle.appendChild(label);
+  toggle.onclick = () => {
+    const content = wrapper.querySelector('.reasoning-content');
+    if (content) {
+      content.classList.toggle('visible');
+      arrow.classList.toggle('open');
+    }
+  };
+  card.appendChild(toggle);
+  const content = document.createElement('div');
+  content.className = 'reasoning-content visible';
+  card.appendChild(content);
+  wrapper.appendChild(card);
+  messagesEl.appendChild(wrapper);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return content;
+}
+
+function addMessage(role, content, header) {
+  if (welcomeVisible) {
+    const w = document.getElementById('welcome');
+    if (w) w.remove();
+    welcomeVisible = false;
+  }
+  const wrapper = document.createElement('div');
+  wrapper.className = `msg-wrapper ${role}`;
+  const card = document.createElement('div');
+  card.className = 'msg-card';
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'msg-header';
+  const avatar = document.createElement('div');
+  avatar.className = `msg-avatar ${role}`;
+  avatar.textContent = role === 'user' ? 'U' : 'C';
+  headerDiv.appendChild(avatar);
+  const roleEl = document.createElement('div');
+  roleEl.className = 'msg-role';
+  roleEl.textContent = header || (role === 'user' ? 'You' : 'Codex');
+  headerDiv.appendChild(roleEl);
+  const timeEl = document.createElement('div');
+  timeEl.className = 'msg-time';
+  timeEl.textContent = formatTime();
+  headerDiv.appendChild(timeEl);
+  card.appendChild(headerDiv);
+  const contentEl = document.createElement('div');
+  contentEl.className = 'msg-content';
+  if (role === 'agent') {
+    contentEl.innerHTML = renderMarkdown(content);
+  } else {
+    contentEl.textContent = content;
+  }
+  card.appendChild(contentEl);
+  wrapper.appendChild(card);
+  messagesEl.appendChild(wrapper);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return wrapper;
+}
+
+function addSystemMessage(text, cls) {
+  if (welcomeVisible) {
+    const w = document.getElementById('welcome');
+    if (w) w.remove();
+    welcomeVisible = false;
+  }
+  const div = document.createElement('div');
+  div.className = `msg system${cls ? ' ' + cls : ''}`;
+  div.textContent = text;
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function showTyping() {
+  if (welcomeVisible) {
+    const w = document.getElementById('welcome');
+    if (w) w.remove();
+    welcomeVisible = false;
+  }
+  const wrapper = document.createElement('div');
+  wrapper.className = 'msg-wrapper agent';
+  wrapper.id = 'typing-indicator';
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'msg-header';
+  const avatar = document.createElement('div');
+  avatar.className = 'msg-avatar agent';
+  avatar.textContent = 'C';
+  headerDiv.appendChild(avatar);
+  const roleEl = document.createElement('div');
+  roleEl.className = 'msg-role';
+  roleEl.textContent = 'Codex';
+  headerDiv.appendChild(roleEl);
+  wrapper.appendChild(headerDiv);
+  const dots = document.createElement('div');
+  dots.className = 'typing-dots';
+  dots.innerHTML = '<span></span><span></span><span></span>';
+  wrapper.appendChild(dots);
+  messagesEl.appendChild(wrapper);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return wrapper;
+}
+
+function removeTyping() {
+  const el = document.getElementById('typing-indicator');
+  if (el) el.remove();
+}
+
+function sendRpc(method, params) {
+  return new Promise((resolve, reject) => {
+    const id = nextId++;
+    const msg = JSON.stringify({ method, id, params });
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(msg);
+      pendingRequests.set(id, { resolve, reject, method });
+    } else {
+      reject(new Error('WebSocket not connected'));
+    }
+  });
+}
+
+function updateModelSelect(models) {
+  if (!models || models.length === 0) {
+    modelSelect.innerHTML = '<option value="gpt-5.4-codex">gpt-5.4-codex</option>';
+    return;
+  }
+  modelSelect.innerHTML = '';
+  for (const m of models) {
+    const opt = document.createElement('option');
+    opt.value = m.name || m.id || m;
+    opt.textContent = m.displayName || m.name || m.id || m;
+    modelSelect.appendChild(opt);
+  }
+}
+
+modelSelect.addEventListener('change', () => {
+  if (modelSelect.value) {
+    modelBadge.textContent = modelSelect.value;
+    modelBadge.style.display = '';
+  }
+});
+
+async function loadWorkspace() {
+  const path = currentWorkspace || '.';
+  try {
+    const result = await sendRpc('fs/readDirectory', { path });
+    const entries = result?.entries || [];
+    fileTreeEl.dataset.root = path;
+    renderFileTree(entries);
+  } catch (e) {
+    clearElement(fileTreeEl);
+    const msg = createElement('span', '', `Cannot read: ${path}`);
+    msg.style.cssText = 'font-size:11px;color:var(--text-muted);';
+    fileTreeEl.appendChild(msg);
+  }
+}
+
+async function setWorkspace(path) {
+  if (!path) return;
+  const normalized = normalizePath(path);
+  const valid = await validatePath(normalized);
+  if (!valid) {
+    addSystemMessage(`Invalid path: ${normalized}`, 'error');
+    return;
+  }
+  currentWorkspace = normalized;
+  if (workspacePathEl) {
+    workspacePathEl.textContent = normalized;
+    workspacePathEl.title = normalized;
+  }
+  updateWorkspaceBadge(normalized);
+  clearElement(fileTreeEl);
+  const loading = createElement('span', '', 'Loading...');
+  loading.style.cssText = 'font-size:11px;color:var(--text-muted);';
+  fileTreeEl.appendChild(loading);
+  try {
+    await loadWorkspace();
+    addSystemMessage(`Workspace set to: ${normalized}`, 'success');
+  } catch (e) {
+    clearElement(fileTreeEl);
+    const cannotRead = createElement('span', '', `Cannot read: ${normalized}`);
+    cannotRead.style.cssText = 'font-size:11px;color:var(--red);';
+    fileTreeEl.appendChild(cannotRead);
+    addSystemMessage(`Failed to set workspace: ${normalized}`, 'error');
+  }
+}
+
+function normalizePath(path) {
+  if (path.startsWith('~')) {
+    return '/Users/loong' + path.slice(1);
+  }
+  return path;
+}
+
+let validateTimeout = null;
+async function validatePath(path) {
+  if (!path) return false;
+  try {
+    const result = await sendRpc('fs/readDirectory', { path });
+    return result && result.entries !== undefined;
+  } catch (e) {
+    return false;
+  }
+}
+
+function renderFileTree(entries, parentPath = '') {
+  const rootPath = fileTreeEl.dataset.root || currentWorkspace || '.';
+  const targetEl = parentPath
+    ? document.querySelector(`.tree-children[data-parent="${CSS.escape(parentPath)}"]`)
+    : fileTreeEl;
+
+  if (!targetEl) return;
+
+  clearElement(targetEl);
+
+  if (!entries || entries.length === 0) {
+    targetEl.appendChild(createElement('span', '', 'Empty'));
+    targetEl.firstChild.style.cssText = 'font-size:11px;color:var(--text-muted);';
+    return;
+  }
+
+  const sorted = entries.sort((a, b) => {
+    if (a.type === 'directory' && b.type !== 'directory') return -1;
+    if (a.type !== 'directory' && b.type === 'directory') return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  for (const entry of sorted.slice(0, 100)) {
+    const fullPath = parentPath ? `${parentPath}/${entry.name}` : `${rootPath.replace(/\/$/, '')}/${entry.name}`;
+    if (entry.type === 'directory') {
+      const item = createElement('div', 'tree-item folder');
+      item.dataset.path = fullPath;
+      appendTextNode(item, '📁 ');
+      item.appendChild(createElement('span', '', entry.name));
+      item.addEventListener('click', () => toggleFolder(item));
+      targetEl.appendChild(item);
+
+      const children = createElement('div', 'tree-children collapsed');
+      children.dataset.parent = fullPath;
+      targetEl.appendChild(children);
+    } else {
+      const item = createElement('div', 'tree-item file');
+      item.dataset.path = fullPath;
+      appendTextNode(item, '📄 ');
+      item.appendChild(createElement('span', '', entry.name));
+      targetEl.appendChild(item);
+    }
+  }
+}
+
+async function toggleFolder(el) {
+  const path = el.dataset.path;
+  const children = document.querySelector(`.tree-children[data-parent="${CSS.escape(path)}"]`);
+  if (!children) return;
+  if (!children.classList.contains('collapsed')) {
+    children.classList.add('collapsed');
+    return;
+  }
+  children.classList.remove('collapsed');
+  if (children.children.length > 0) return;
+  try {
+    const result = await sendRpc('fs/readDirectory', { path });
+    const entries = result?.entries || [];
+    renderFileTree(entries, path);
+  } catch (e) {
+    clearElement(children);
+    const errorEl = createElement('div', '', 'Error loading');
+    errorEl.style.cssText = 'padding:3px 10px;font-size:11px;color:var(--text-muted);';
+    children.appendChild(errorEl);
+  }
+}
+
+async function openWorkspaceBrowser() {
+  workspaceBrowserPath = currentWorkspace.startsWith('/') ? currentWorkspace : '/';
+  pendingWorkspace = workspaceBrowserPath;
+  workspaceModal.classList.add('show');
+  renderQuickSelect();
+  await browseDirectory(workspaceBrowserPath);
+}
+
+function closeWorkspaceModal() {
+  workspaceModal.classList.remove('show');
+}
+
+function renderQuickSelect() {
+  const el = document.getElementById('workspace-quick-select');
+  if (!el || TRUSTED_PROJECTS.length === 0) return;
+  clearElement(el);
+  const title = createElement('div', '', 'Trusted Projects');
+  title.style.cssText = 'font-size:10px;color:var(--text-muted);margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;';
+  el.appendChild(title);
+
+  const list = createElement('div');
+  list.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;';
+  for (const tp of TRUSTED_PROJECTS) {
+    const name = tp.split('/').pop() || tp;
+    const isActive = tp === currentWorkspace;
+    const chip = createElement('button', '', name);
+    chip.type = 'button';
+    chip.style.cssText = `padding:4px 10px;border-radius:999px;font-size:11px;cursor:pointer;border:1px solid ${isActive ? 'var(--accent)' : 'var(--border)'};background:${isActive ? 'var(--accent)' : 'var(--bg-primary)'};color:${isActive ? '#06101e' : 'var(--text-secondary)'};transition:all 0.15s;`;
+    chip.addEventListener('click', () => selectTrustedProject(tp));
+    list.appendChild(chip);
+  }
+  el.appendChild(list);
+}
+
+function selectTrustedProject(path) {
+  pendingWorkspace = path;
+  browseDirectory(path);
+}
+
+function isPathTrusted(path) {
+  return TRUSTED_PROJECTS.some(tp => path === tp || path.startsWith(tp + '/'));
+}
+
+async function browseDirectory(path) {
+  workspaceBrowserPath = path;
+  pendingWorkspace = path;
+  renderBreadcrumb(path);
+  workspaceDirList.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px;">Loading...</div>';
+  try {
+    const result = await sendRpc('fs/readDirectory', { path });
+    const entries = result?.entries || [];
+    const dirs = entries.filter(e => e.type === 'directory').sort((a, b) => a.name.localeCompare(b.name));
+    clearElement(workspaceDirList);
+
+    function addDirectoryRow(label, targetPath, options = {}) {
+      const row = createElement('div', `dir-item${options.current ? ' current' : ''}`);
+      row.dataset.path = targetPath;
+      row.appendChild(createElement('span', '', label));
+      if (options.trusted) {
+        const badge = createElement('span', '', '✓');
+        badge.style.cssText = 'color:var(--green);font-size:10px;margin-left:auto;';
+        row.appendChild(badge);
+      }
+      row.addEventListener('click', () => browseDirectory(targetPath));
+      if (options.muted) row.style.color = 'var(--text-muted)';
+      workspaceDirList.appendChild(row);
+    }
+
+    if (path !== '/') {
+      const parent = path.split('/').slice(0, -1).join('/') || '/';
+      addDirectoryRow('..', parent, { muted: true });
+    }
+    for (const d of dirs) {
+      const fullPath = path === '/' ? `/${d.name}` : `${path}/${d.name}`;
+      const isCurrent = fullPath === pendingWorkspace;
+      const trusted = isPathTrusted(fullPath);
+      addDirectoryRow(d.name, fullPath, { current: isCurrent, trusted });
+    }
+    if (dirs.length === 0 && path === '/') {
+      workspaceDirList.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px;">No directories found</div>';
+    }
+  } catch (e) {
+    clearElement(workspaceDirList);
+    const errorEl = createElement('div', '', `Error: ${e.message}`);
+    errorEl.style.cssText = 'padding:12px;color:var(--red);font-size:12px;';
+    workspaceDirList.appendChild(errorEl);
+  }
+}
+
+function renderBreadcrumb(path) {
+  const parts = path.split('/').filter(Boolean);
+  clearElement(workspaceBreadcrumb);
+
+  const root = createElement('span', '', '/');
+  root.addEventListener('click', () => browseDirectory('/'));
+  workspaceBreadcrumb.appendChild(root);
+
+  let accum = '';
+  for (const part of parts) {
+    accum += `/${part}`;
+    workspaceBreadcrumb.appendChild(document.createTextNode(' / '));
+    const crumb = createElement('span', '', part);
+    crumb.addEventListener('click', () => browseDirectory(accum));
+    workspaceBreadcrumb.appendChild(crumb);
+  }
+}
+
+function confirmWorkspace() {
+  closeWorkspaceModal();
+  if (pendingWorkspace) {
+    setWorkspace(pendingWorkspace);
+  }
+}
+
+workspacePathEl.addEventListener('click', openWorkspaceBrowser);
+
+document.getElementById('btn-browse-workspace')?.addEventListener('click', openWorkspaceBrowser);
+
+async function updateThreadList() {
+  try {
+    const result = await sendRpc('thread/list', { limit: 50, cwd: currentWorkspace });
+    const threads = result?.data || [];
+    clearElement(threadListEl);
+    if (threads.length === 0) {
+      threadListEl.innerHTML = '<div style="padding:16px;text-align:center;font-size:12px;color:var(--text-muted);">No threads yet</div>';
+      return;
+    }
+    for (const t of threads) {
+      const div = document.createElement('div');
+      div.className = `thread-item${t.id === currentThreadId ? ' active' : ''}`;
+      const statusIcon = t.status?.type === 'idle' ? '💤' : t.status?.type === 'running' ? '🔄' : '📌';
+      const date = formatDate(t.updatedAt);
+
+      const title = createElement('div', 'thread-title', t.preview?.slice(0, 40) || t.name || 'unnamed');
+      const meta = createElement('div', 'thread-meta');
+      meta.appendChild(createElement('span', 'thread-status', statusIcon));
+      meta.appendChild(createElement('span', '', date));
+      div.appendChild(title);
+      div.appendChild(meta);
+      div.onclick = async () => {
+        currentThreadId = t.id;
+        document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
+        div.classList.add('active');
+        await loadThreadHistory(t.id);
+      };
+      threadListEl.appendChild(div);
+    }
+  } catch (e) {
+    console.log('thread list error:', e.message);
+  }
+}
+
+async function loadThreadHistory(threadId) {
+  try {
+    const result = await sendRpc('thread/read', { threadId, includeTurns: true });
+    const thread = result?.thread;
+    if (!thread) {
+      addSystemMessage('Failed to load thread', 'error');
+      return;
+    }
+    messagesEl.innerHTML = '';
+    welcomeVisible = true;
+    addSystemMessage(`Loaded: ${thread.name || thread.preview?.slice(0, 50) || threadId?.slice(0, 8)}`, 'success');
+
+    const turns = thread.turns || [];
+    for (const turn of turns) {
+      const items = turn.items || [];
+      for (const item of items) {
+        switch (item.type) {
+          case 'userMessage': {
+            const texts = (item.content || []).map(c => c.text || '').filter(Boolean).join('\n');
+            if (texts) addMessage('user', texts, 'You');
+            break;
+          }
+          case 'agentMessage': {
+            if (item.text) addMessage('agent', item.text, 'Codex');
+            break;
+          }
+          case 'commandExecution': {
+            const icon = item.status === 'completed' ? '✅' : item.status === 'failed' ? '❌' : '🔧';
+            addSystemMessage(`${icon} ${item.command?.slice(0, 80) || 'command'}`);
+            break;
+          }
+          case 'fileChange': {
+            const changes = (item.changes || []).map(c => {
+              const icon = c.type === 'add' ? '➕' : c.type === 'delete' ? '❌' : '✏️';
+              return `${icon} ${c.path}`;
+            }).join('\n');
+            if (changes) addSystemMessage(changes);
+            break;
+          }
+          case 'contextCompaction': {
+            addSystemMessage('📦 Context compacted');
+            break;
+          }
+        }
+      }
+    }
+    if (turns.length === 0) {
+      addSystemMessage('Empty thread');
+    }
+  } catch (e) {
+    addSystemMessage('Failed to load history: ' + e.message, 'error');
+  }
+}
+
+function connect() {
+  setStatus('connecting');
+  ws = new WebSocket(BRIDGE_WS);
+
+  ws.onopen = async () => {
+    setStatus('connected');
+    sendBtn.disabled = false;
+    addSystemMessage('Connected', 'success');
+
+    try {
+      await sendRpc('initialize', {
+        clientInfo: { name: 'codex_bridge_web', title: 'Codex Bridge Web UI', version: '1.0.0' }
+      });
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ method: 'initialized' }));
+      }
+      addSystemMessage('Initialized', 'success');
+
+      try {
+        const models = await sendRpc('model/list', {});
+        updateModelSelect(models.data || []);
+        if (modelSelect.options.length > 0) {
+          modelSelect.selectedIndex = 0;
+          modelBadge.textContent = modelSelect.value;
+          modelBadge.style.display = '';
+        }
+      } catch (e) {
+        modelSelect.innerHTML = '<option value="gpt-5.4-codex">gpt-5.4-codex</option>';
+        modelBadge.textContent = 'gpt-5.4-codex';
+        modelBadge.style.display = '';
+      }
+
+      try {
+        await loadWorkspace();
+        if (workspacePathEl) {
+          workspacePathEl.textContent = currentWorkspace;
+          workspacePathEl.title = currentWorkspace;
+        }
+        updateWorkspaceBadge(currentWorkspace);
+      } catch (e) {
+        console.log('workspace load failed:', e.message);
+      }
+
+      try {
+        await updateThreadList();
+      } catch (e) {
+        console.log('thread list load failed:', e.message);
+      }
+    } catch (e) {
+      addSystemMessage('Init error: ' + e.message, 'error');
+    }
+  };
+
+  ws.onclose = () => {
+    setStatus('disconnected');
+    sendBtn.disabled = true;
+    addSystemMessage('Disconnected. Reconnecting...', 'error');
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => {
+    setStatus('disconnected');
+  };
+
+  ws.onmessage = (event) => {
+    let data;
+    try {
+      data = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    handleMessage(data);
+  };
+}
+
+function handleMessage(data) {
+  if (data.id !== undefined && data.method && !pendingRequests.has(data.id)) {
+    handleServerRequest(data);
+    return;
+  }
+
+  if (data.id !== undefined && pendingRequests.has(data.id)) {
+    const req = pendingRequests.get(data.id);
+    pendingRequests.delete(data.id);
+    if (data.error) {
+      req.reject(new Error(data.error.message || JSON.stringify(data.error)));
+    } else {
+      req.resolve(data.result);
+    }
+    return;
+  }
+
+  const method = data.method;
+  const params = data.params || {};
+
+  switch (method) {
+    case 'thread/started':
+      currentThreadId = params.thread?.id;
+      addSystemMessage(`Thread started`, 'success');
+      updateThreadList();
+      break;
+
+    case 'thread/status/changed':
+      break;
+
+    case 'thread/name/updated':
+      addSystemMessage(`Thread named: "${params.name || params.title || 'unnamed'}"`);
+      break;
+
+    case 'turn/started':
+      currentTurnId = params.turn?.id;
+      isTurnActive = true;
+      agentMessageBuffer = '';
+      agentMessageEl = null;
+      reasoningBuffer = '';
+      reasoningEl = null;
+      setTurnState('running');
+      sendBtn.disabled = true;
+      showTyping();
+      break;
+
+    case 'turn/completed':
+      isTurnActive = false;
+      currentTurnId = null;
+      removeTyping();
+      setTurnState(params.turn?.status === 'completed' ? 'done' : 'error');
+      sendBtn.disabled = false;
+      if (params.turn?.error) {
+        addSystemMessage('Error: ' + params.turn.error.message, 'error');
+      }
+      break;
+
+    case 'item/started': {
+      const item = params.item || {};
+      if (item.type === 'agentMessage') {
+        removeTyping();
+        agentMessageBuffer = '';
+        agentMessageEl = addMessage('agent', '', 'Codex');
+      } else if (item.type === 'reasoning') {
+        removeTyping();
+        reasoningBuffer = '';
+        reasoningEl = addReasoningPanel();
+      } else if (item.type === 'userMessage') {
+        // echoed back
+      } else if (item.type === 'fileChange') {
+        showFileChange(item);
+      } else if (item.type === 'commandExecution') {
+        addSystemMessage(`🔧 ${item.command?.slice(0, 80) || 'Running command...'}`);
+      } else if (item.type === 'contextCompaction') {
+        addSystemMessage('📦 Compacting context...');
+      } else {
+        addSystemMessage(`📦 ${item.type}`);
+      }
+      break;
+    }
+
+    case 'item/agentMessage/delta':
+      if (params.delta) {
+        agentMessageBuffer += params.delta;
+        if (agentMessageEl) {
+          agentMessageEl.querySelector('.msg-content').innerHTML = renderMarkdown(agentMessageBuffer);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+      }
+      break;
+
+    case 'item/reasoning/textDelta':
+    case 'item/reasoning/summaryTextDelta':
+      if (params.delta) {
+        reasoningBuffer += params.delta;
+        if (reasoningEl) {
+          reasoningEl.textContent = reasoningBuffer;
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+      }
+      break;
+
+    case 'item/completed':
+      if (reasoningEl) {
+        const toggle = reasoningEl.parentElement?.querySelector('.reasoning-toggle span:last-child');
+        if (toggle) toggle.textContent = 'Thought process';
+      }
+      break;
+
+    case 'item/commandExecution/requestApproval':
+    case 'item/fileChange/requestApproval':
+    case 'item/permissions/requestApproval':
+      handleApprovalRequest(data.id, params);
+      break;
+
+    case 'turn/diff/updated':
+      break;
+
+    case 'turn/plan/updated':
+      break;
+
+    case 'error':
+      addSystemMessage(`❌ ${params.error?.message || 'Unknown error'}`, 'error');
+      break;
+
+    case 'model/rerouted':
+      if (params.targetModel) {
+        modelBadge.textContent = params.targetModel;
+        modelBadge.style.display = '';
+      }
+      break;
+
+    default:
+      if (!method?.startsWith('codex/event')) {
+        console.log('Unknown:', method);
+      }
+  }
+}
+
+function handleServerRequest(data) {
+  const method = data.method;
+  const params = data.params || {};
+
+  switch (method) {
+    case 'item/commandExecution/requestApproval':
+    case 'item/fileChange/requestApproval':
+    case 'item/permissions/requestApproval':
+      handleApprovalRequest(data.id, params);
+      break;
+
+    default:
+      console.log('Unhandled server request:', method);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          id: data.id,
+          error: { code: -32601, message: `Method not supported: ${method}` }
+        }));
+      }
+  }
+}
+
+function showFileChange(item) {
+  const changes = item.changes || [];
+  if (changes.length === 0) return;
+  const summary = changes.map(c => {
+    const icon = c.type === 'add' ? '➕' : c.type === 'delete' ? '❌' : '✏️';
+    return `${icon} ${c.path}`;
+  }).join('\n');
+  addSystemMessage(summary);
+}
+
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('.code-copy');
+  if (!button) return;
+  const text = button.dataset.copy || '';
+  try {
+    await navigator.clipboard.writeText(text);
+    button.classList.add('copied');
+    button.textContent = 'Copied';
+    setTimeout(() => {
+      button.classList.remove('copied');
+      button.textContent = 'Copy';
+    }, 1400);
+  } catch (e) {
+    button.textContent = 'Failed';
+    setTimeout(() => {
+      button.textContent = 'Copy';
+    }, 1400);
+  }
+});
+
+function handleApprovalRequest(requestId, params) {
+  pendingApproval = { requestId, params };
+  const content = document.getElementById('approval-content');
+  content.textContent = JSON.stringify(params, null, 2);
+  document.getElementById('approval-modal').classList.add('show');
+}
+
+function respondApproval(allowed) {
+  document.getElementById('approval-modal').classList.remove('show');
+  if (!pendingApproval) return;
+  const { requestId } = pendingApproval;
+  pendingApproval = null;
+  const decision = allowed ? 'accept' : 'decline';
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ id: requestId, result: { decision } }));
+  }
+}
+
+async function startThread() {
+  const cwd = currentWorkspace || '.';
+  try {
+    const result = await sendRpc('thread/start', {
+      model: modelSelect.value || 'gpt-5.4-codex',
+      cwd,
+      approvalPolicy: document.getElementById('approval-select').value,
+      sandbox: document.getElementById('sandbox-select').value,
+    });
+    if (result?.thread?.id) {
+      currentThreadId = result.thread.id;
+    }
+    return currentThreadId;
+  } catch (e) {
+    addSystemMessage('Failed to start thread: ' + e.message, 'error');
+    return null;
+  }
+}
+
+async function sendTurn(text) {
+  if (!currentThreadId) {
+    currentThreadId = await startThread();
+    if (!currentThreadId) return;
+  }
+  try {
+    await sendRpc('turn/start', {
+      threadId: currentThreadId,
+      input: [{ type: 'text', text }]
+    });
+  } catch (e) {
+    addSystemMessage('Failed to send turn: ' + e.message, 'error');
+  }
+}
+
+// Event listeners
+sendBtn.addEventListener('click', async () => {
+  const text = inputEl.value.trim();
+  if (!text || isTurnActive) return;
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+  addMessage('user', text, 'You');
+  await sendTurn(text);
+});
+
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendBtn.click();
+  }
+});
+
+inputEl.addEventListener('input', () => {
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 150) + 'px';
+});
+
+document.getElementById('btn-new-thread').addEventListener('click', async () => {
+  currentThreadId = null;
+  currentTurnId = null;
+  isTurnActive = false;
+  setTurnState('idle');
+  sendBtn.disabled = false;
+  messagesEl.innerHTML = '';
+  welcomeVisible = true;
+  addSystemMessage('Starting new thread...', 'success');
+  await startThread();
+});
+
+document.getElementById('btn-refresh-threads').addEventListener('click', async () => {
+  await updateThreadList();
+});
+
+document.getElementById('sidebar-toggle').addEventListener('click', () => {
+  if (window.innerWidth <= 768) {
+    sidebar.classList.toggle('open');
+    return;
+  }
+  sidebar.classList.toggle('collapsed');
+});
+
+document.getElementById('approval-deny').addEventListener('click', () => respondApproval(false));
+document.getElementById('approval-allow').addEventListener('click', () => respondApproval(true));
+document.getElementById('workspace-cancel').addEventListener('click', closeWorkspaceModal);
+document.getElementById('workspace-confirm').addEventListener('click', confirmWorkspace);
+document.querySelectorAll('.prompt-chip').forEach((button) => {
+  button.addEventListener('click', () => {
+    inputEl.value = button.dataset.prompt || '';
+    inputEl.dispatchEvent(new Event('input'));
+    inputEl.focus();
+  });
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'l' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    messagesEl.innerHTML = '';
+    welcomeVisible = true;
+  }
+});
+
+updateWorkspaceBadge(currentWorkspace);
+connect();
+</script>
+</body>
+</html>
