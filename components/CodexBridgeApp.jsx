@@ -41,10 +41,6 @@ function createSession(workspace, id = 'default-session') {
     turnState: 'idle',
     messages: [],
     threadList: [],
-    fileTreeRoot: workspace,
-    fileTreeEntries: [],
-    folderContents: {},
-    expandedFolders: {},
     model: '',
     approvalPolicy: 'on-request',
     sandbox: 'workspace-write',
@@ -226,73 +222,63 @@ function flattenTurnItems(turns) {
 
 function MessageItem({ message, onToggleReasoning }) {
   if (message.kind === 'system') {
-    return <div className={`msg system${message.tone === 'error' ? ' error' : message.tone === 'success' ? ' success' : ''}`}>{message.content}</div>;
+    return <div className={`system-line${message.tone === 'error' ? ' error' : message.tone === 'success' ? ' success' : ''}`}>{message.content}</div>;
   }
 
   if (message.kind === 'command') {
-  return (
-      <div className="event-card command-card">
-        <div className="event-card-header">
-          <span className={`event-badge ${message.status || 'running'}`}>{message.status || 'running'}</span>
-          <span className="event-title">Command Execution</span>
-        </div>
-        <div className="event-command">{message.command}</div>
+    return (
+      <div className="event-line">
+        <div className="event-label">Command · {message.status || 'running'}</div>
+        <pre className="event-body">{message.command}</pre>
       </div>
     );
   }
 
   if (message.kind === 'file-change') {
-  return (
-      <div className="event-card file-card">
-        <div className="event-card-header">
-          <span className="event-badge neutral">{message.changes?.length || 0} files</span>
-          <span className="event-title">File Changes</span>
-        </div>
-        <div className="event-file-list">
-          {(message.changes || []).map((change, index) => (
-            <div className="event-file-item" key={`${change.path || 'change'}-${index}`}>
-              <span className={`change-type ${change.type || 'update'}`}>
-                {change.type === 'add' ? 'ADD' : change.type === 'delete' ? 'DEL' : 'MOD'}
-              </span>
-              <span className="change-path">{change.path}</span>
-            </div>
-          ))}
+    return (
+      <div className="event-line">
+        <div className="event-label">Files · {message.changes?.length || 0}</div>
+        <div className="event-list">
+          {(message.changes || []).map((change, index) => {
+            const label = change.type === 'add' ? '+' : change.type === 'delete' ? '-' : '~';
+            return (
+              <div className="event-list-row" key={`${change.path || 'change'}-${index}`}>
+                <span className="event-change">{label}</span>
+                <span className="event-path">{change.path}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
   }
 
   if (message.kind === 'approval') {
-  return (
-      <div className="event-card approval-card">
-        <div className="event-card-header">
-          <span className="event-badge pending">approval</span>
-          <span className="event-title">Pending Approval</span>
-        </div>
-        <div className="event-approval-copy">{message.summary || 'Waiting for approval decision.'}</div>
+    return (
+      <div className="event-line">
+        <div className="event-label">Approval</div>
+        <div className="event-body">{message.summary || 'Waiting for approval decision.'}</div>
       </div>
     );
   }
 
   if (message.kind === 'reasoning') {
-  return (
-      <div className="msg-wrapper reasoning-block">
-        <div className="msg-card">
-          <button className="reasoning-toggle" onClick={() => onToggleReasoning(message.id)} type="button">
-            <span className={`arrow${message.open ? ' open' : ''}`}>▶</span>
-            <span>{message.label || 'Thought process'}</span>
-          </button>
-          <div className={`reasoning-content${message.open ? ' visible' : ''}`}>{message.content}</div>
-        </div>
+    return (
+      <div className="reasoning-row">
+        <button className="reasoning-toggle" onClick={() => onToggleReasoning(message.id)} type="button">
+          <span className={`arrow${message.open ? ' open' : ''}`}>▶</span>
+          <span>{message.label || 'Thought process'}</span>
+        </button>
+        <div className={`reasoning-content${message.open ? ' visible' : ''}`}>{message.content}</div>
       </div>
     );
   }
 
   if (message.kind === 'typing') {
-  return (
-      <div className="msg-wrapper agent">
-        <div className="msg-card">
-          <div className="msg-header">
+    return (
+      <div className="message-row agent">
+        <div className="message-inner">
+          <div className="message-header">
             <div className="msg-avatar agent">C</div>
             <div className="msg-role">Codex</div>
           </div>
@@ -306,8 +292,8 @@ function MessageItem({ message, onToggleReasoning }) {
     );
   }
   return (
-    <div className={`msg-wrapper ${message.role}`}>
-      <div className="msg-card">
+    <div className={`message-row ${message.role === 'user' ? 'user' : 'assistant'}`}>
+      <div className="message-inner">
         <div className="msg-header">
           <div className={`msg-avatar ${message.role}`}>{message.role === 'user' ? 'U' : 'C'}</div>
           <div className="msg-role">{message.header}</div>
@@ -321,41 +307,6 @@ function MessageItem({ message, onToggleReasoning }) {
       </div>
     </div>
   );
-}
-
-function FileTree({ entries, rootPath, folderContents, expandedFolders, onToggleFolder }) {
-  if (!entries?.length) {
-    return <div className="tree-empty">Empty</div>;
-  }
-
-  return entries.map((entry) => {
-    const fullPath = rootPath ? `${rootPath.replace(/\/$/, '')}/${entry.name}` : entry.name;
-    const isDirectory = entry.type === 'directory';
-    const isExpanded = expandedFolders[fullPath];
-    const children = folderContents[fullPath] || [];
-  return (
-      <div key={fullPath}>
-        <div
-          className={`tree-item ${isDirectory ? 'folder' : 'file'}`}
-          onClick={() => isDirectory && onToggleFolder(fullPath)}
-        >
-          <span>{isDirectory ? '📁' : '📄'}</span>
-          <span>{entry.name}</span>
-        </div>
-        {isDirectory && isExpanded ? (
-          <div className="tree-children">
-            <FileTree
-              entries={children}
-              rootPath={fullPath}
-              folderContents={folderContents}
-              expandedFolders={expandedFolders}
-              onToggleFolder={onToggleFolder}
-            />
-          </div>
-        ) : null}
-      </div>
-    );
-  });
 }
 
 export default function CodexBridgeApp() {
@@ -374,8 +325,10 @@ export default function CodexBridgeApp() {
   const [pendingWorkspace, setPendingWorkspace] = useState(DEFAULT_WORKSPACE);
   const [approvalRequest, setApprovalRequest] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [debugOpen, setDebugOpen] = useState(false);
+  const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false);
+  const [sidebarWorkspaceCollapsed, setSidebarWorkspaceCollapsed] = useState(false);
   const [threadFilter, setThreadFilter] = useState('');
   const [recentWorkspaces, setRecentWorkspaces] = useState([DEFAULT_WORKSPACE, ...TRUSTED_PROJECTS.slice(0, 3)]);
   const [settings, setSettings] = useState(createDefaultSettings());
@@ -448,7 +401,7 @@ export default function CodexBridgeApp() {
     pushDebug('boot params', `token=${nextToken ? 'present' : 'missing'} cwd=${cwd}`);
     setToken(nextToken);
     setPendingWorkspace(cwd);
-    setSessions((prev) => prev.map((session) => (session.id === activeSessionIdRef.current ? { ...session, workspace: cwd, fileTreeRoot: cwd } : session)));
+    setSessions((prev) => prev.map((session) => (session.id === activeSessionIdRef.current ? { ...session, workspace: cwd } : session)));
   }, []);
 
   useEffect(() => {
@@ -626,7 +579,6 @@ export default function CodexBridgeApp() {
 
         if (payload.state === 'connected') {
           setConnectionStatus('connected');
-          appendSystemMessage(activeSessionIdRef.current, 'Connected', 'success');
 
           try {
             pushDebug('rpc initialize', 'request');
@@ -636,7 +588,6 @@ export default function CodexBridgeApp() {
             pushDebug('rpc initialize', 'ok');
             await sendNotification('initialized');
             pushDebug('rpc initialized', 'notification sent');
-            appendSystemMessage(activeSessionIdRef.current, 'Initialized', 'success');
 
             try {
               pushDebug('rpc model/list', 'request');
@@ -736,31 +687,18 @@ export default function CodexBridgeApp() {
     );
   }
 
-  function createNewSession(workspace = activeSession.workspace) {
-    const session = createSession(workspace, makeId('session'));
-    setSessions((prev) => [...prev, session]);
-    setActiveSessionId(session.id);
-  }
-
-  function closeSession(sessionId) {
-    if (sessions.length === 1) {
-      updateSession(sessionId, (session) => ({
-        ...session,
-        threadId: null,
-        currentTurnId: null,
-        isTurnActive: false,
-        turnState: 'idle',
-        messages: [],
-      }));
-      return;
-    }
-
-    const nextSessions = sessions.filter((session) => session.id !== sessionId);
-    const fallback = nextSessions[Math.max(0, nextSessions.findIndex((session) => session.id === activeSessionId) - 1)] || nextSessions[0];
-    setSessions(nextSessions);
-    if (activeSessionId === sessionId && fallback) {
-      setActiveSessionId(fallback.id);
-    }
+  async function resetCurrentThread() {
+    updateActiveSession((session) => ({
+      ...session,
+      threadId: null,
+      currentTurnId: null,
+      isTurnActive: false,
+      turnState: 'idle',
+      label: shortWorkspaceLabel(session.workspace),
+      messages: [{ id: makeId('system'), kind: 'system', tone: 'success', content: 'Starting new thread...' }],
+    }));
+    await startThread();
+    await updateThreadList();
   }
 
   function appendSystemMessage(sessionId, content, tone = 'neutral') {
@@ -882,15 +820,11 @@ export default function CodexBridgeApp() {
 
   async function loadWorkspace(path) {
     try {
-      const result = await sendRpc('fs/readDirectory', { path });
+      await sendRpc('fs/readDirectory', { path });
       updateActiveSession((session) => ({
         ...session,
         label: shortWorkspaceLabel(path),
         workspace: path,
-        fileTreeRoot: path,
-        fileTreeEntries: normalizeFileEntries(result.entries),
-        folderContents: {},
-        expandedFolders: {},
       }));
     } catch (error) {
       appendSystemMessage(activeSessionIdRef.current, `Cannot read: ${path}`, 'error');
@@ -903,34 +837,6 @@ export default function CodexBridgeApp() {
       updateActiveSession((session) => ({ ...session, threadList: result.data || [] }));
     } catch (error) {
       appendSystemMessage(activeSessionIdRef.current, `Thread list error: ${error.message}`, 'error');
-    }
-  }
-
-  async function toggleFolder(path) {
-    const expanded = activeSession.expandedFolders[path];
-    if (expanded) {
-      updateActiveSession((session) => ({
-        ...session,
-        expandedFolders: { ...session.expandedFolders, [path]: false },
-      }));
-      return;
-    }
-
-    updateActiveSession((session) => ({
-      ...session,
-      expandedFolders: { ...session.expandedFolders, [path]: true },
-    }));
-
-    if (activeSession.folderContents[path]) return;
-
-    try {
-      const result = await sendRpc('fs/readDirectory', { path });
-      updateActiveSession((session) => ({
-        ...session,
-        folderContents: { ...session.folderContents, [path]: normalizeFileEntries(result.entries) },
-      }));
-    } catch (error) {
-      appendSystemMessage(activeSessionIdRef.current, `Error loading ${path}: ${error.message}`, 'error');
     }
   }
 
@@ -1026,6 +932,7 @@ export default function CodexBridgeApp() {
       cwd: session.workspace,
       approvalPolicy: session.approvalPolicy,
       sandbox: session.sandbox,
+      developerInstructions: settings.sessionDeveloperInstructions?.trim() || null,
     });
     updateActiveSession((current) => ({
       ...current,
@@ -1260,50 +1167,27 @@ export default function CodexBridgeApp() {
   });
   const workspaceChoices = buildWorkspaceList(activeSession.workspace, recentWorkspaces);
   const activeThread = activeSession.threadList.find((thread) => thread.id === activeSession.threadId);
+  const turnLabel = activeSession.turnState === 'running' ? 'Running' : activeSession.turnState === 'done' ? 'Done' : activeSession.turnState === 'error' ? 'Error' : 'Idle';
+  const bridgeLabel = connectionStatus === 'connected' ? 'Bridge on' : connectionStatus === 'connecting' ? 'Bridge connecting' : 'Bridge off';
   const { quickCommand: cfQuickCommand, namedCommand: cfNamedCommand } = buildTunnelCommands(settings);
   return (
-    <div className="bridge-root" onClickCapture={handleCopyClick}>
-      {/* Mobile Overlay */}
+    <div className={`bridge-root${sidebarOpen ? ' sidebar-visible' : ''}`} onClickCapture={handleCopyClick}>
       <div className={`mobile-overlay ${sidebarOpen ? 'active' : ''}`} onClick={() => setSidebarOpen(false)} />
 
-      {/* --- SIDEBAR --- */}
       <div id="sidebar" className={sidebarOpen ? 'open' : ''}>
         <div className="sidebar-header">
-          <div className="logo">
-            <span>⬡</span>
-            Codex
-          </div>
+          <div className="logo">History</div>
           <button className="mobile-close-btn" onClick={() => setSidebarOpen(false)} type="button">×</button>
-        </div>
-
-        <div className="sidebar-actions">
-          <button
-            id="btn-new-thread"
-            onClick={async () => {
-              updateActiveSession((session) => ({
-                ...session,
-                threadId: null,
-                currentTurnId: null,
-                isTurnActive: false,
-                turnState: 'idle',
-                label: shortWorkspaceLabel(session.workspace),
-                messages: [{ id: makeId('system'), kind: 'system', tone: 'success', content: 'Starting new thread...' }],
-              }));
-              await startThread();
-              await updateThreadList();
-              if (window.innerWidth <= 768) setSidebarOpen(false);
-            }}
-            type="button"
-          >
-            + New Thread
-          </button>
         </div>
 
         <div className="sidebar-scrollable">
           <div className="sidebar-section">
             <div className="section-head">
               <h3>Threads</h3>
+              <div className="section-actions">
+                <button id="btn-new-thread" onClick={resetCurrentThread} title="New Thread" type="button">＋</button>
               <button className="icon-btn" onClick={() => updateThreadList()} title="Refresh" type="button">↻</button>
+              </div>
             </div>
             <input
               className="section-input"
@@ -1327,9 +1211,7 @@ export default function CodexBridgeApp() {
                   >
                     <div className="thread-title">{thread.preview?.slice(0, 40) || thread.name || 'unnamed'}</div>
                     <div className="thread-meta">
-                      <span className="thread-status">
-                        {thread.status?.type === 'idle' ? '💬' : thread.status?.type === 'running' ? '🔄' : '📌'}
-                      </span>
+                      <span>{thread.status?.type || 'idle'}</span>
                       <span>{formatDate(thread.updatedAt)}</span>
                     </div>
                   </div>
@@ -1341,175 +1223,86 @@ export default function CodexBridgeApp() {
           <div id="workspace-section" className="sidebar-section">
             <div className="section-head">
               <h3>Workspace</h3>
-              <button className="icon-btn" onClick={openWorkspaceBrowser} title="Change Workspace" type="button">📁</button>
-            </div>
-            <div id="workspace-path" title="Click to browse" onClick={openWorkspaceBrowser}>
-              {activeSession.workspace}
-            </div>
-            <div className="workspace-chip-list">
-              {workspaceChoices.map((workspace) => (
+              <div className="section-actions">
                 <button
-                  key={workspace}
-                  className={`workspace-quick-chip${workspace === activeSession.workspace ? ' active' : ''}`}
-                  onClick={() => switchWorkspace(workspace)}
+                  className="icon-btn"
+                  onClick={() => setSidebarWorkspaceCollapsed((value) => !value)}
+                  title={sidebarWorkspaceCollapsed ? 'Expand Workspace' : 'Collapse Workspace'}
                   type="button"
                 >
-                  {shortWorkspaceLabel(workspace)}
+                  {sidebarWorkspaceCollapsed ? '▸' : '▾'}
                 </button>
-              ))}
-            </div>
-            <div id="file-tree">
-              <FileTree
-                entries={activeSession.fileTreeEntries}
-                rootPath={activeSession.fileTreeRoot}
-                folderContents={activeSession.folderContents}
-                expandedFolders={activeSession.expandedFolders}
-                onToggleFolder={toggleFolder}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="sidebar-footer">
-          <button className="settings-btn" onClick={() => setSettingsOpen(true)} type="button">
-            ⚙️ Settings
-          </button>
-          <div className="status-shell">
-            <div id="status-dot" className={connectionStatus} />
-            <span id="status-text">
-              {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* --- MAIN CHAT AREA --- */}
-      <div id="chat-area">
-        <div id="top-bar">
-          <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} type="button">☰</button>
-          <div className="top-bar-controls">
-            <select
-              id="model-select"
-              value={activeSession.model}
-              onChange={(event) => updateActiveSession((session) => ({ ...session, model: event.target.value }))}
-            >
-              {(modelOptions.length ? modelOptions : [{ name: 'gpt-4o-codex', displayName: 'gpt-4o-codex' }]).map((model) => (
-                <option key={model.name || model.id} value={model.name || model.id}>
-                  {model.displayName || model.name || model.id}
-                </option>
-              ))}
-            </select>
-            <select
-              id="sandbox-select"
-              value={activeSession.sandbox}
-              onChange={(event) => updateActiveSession((session) => ({ ...session, sandbox: event.target.value }))}
-            >
-              <option value="workspace-write">workspace-write</option>
-              <option value="read-only">read-only</option>
-              <option value="danger-full-access">danger-full-access</option>
-            </select>
-            <select
-              id="approval-select"
-              value={activeSession.approvalPolicy}
-              onChange={(event) => updateActiveSession((session) => ({ ...session, approvalPolicy: event.target.value }))}
-            >
-              <option value="on-request">on-request</option>
-              <option value="untrusted">untrusted</option>
-              <option value="never">never</option>
-            </select>
-          </div>
-          <div className="spacer" />
-          {modelBadge && <span id="model-badge">{modelBadge}</span>}
-          <button className={`debug-toggle${debugOpen ? ' active' : ''}`} onClick={() => setDebugOpen((value) => !value)} type="button">
-            {debugOpen ? 'Hide Debug' : 'Debug'}
-          </button>
-          <span id="turn-indicator" className={activeSession.turnState}>
-            {activeSession.turnState === 'running' ? 'Running' : activeSession.turnState === 'done' ? 'Done' : activeSession.turnState === 'error' ? 'Error' : 'Idle'}
-          </span>
-        </div>
-
-        <div className="thread-tabs">
-          <div className="thread-tab-list">
-            {sessions.map((session) => (
-              <div key={session.id} className={`thread-tab${session.id === activeSessionId ? ' active' : ''}`}>
-                <button className="thread-tab-main" onClick={() => setActiveSessionId(session.id)} type="button">
-                  <span className="thread-tab-title">{session.label || shortWorkspaceLabel(session.workspace)}</span>
-                  <span className="thread-tab-meta">{shortWorkspaceLabel(session.workspace)}</span>
-                </button>
-                <button className="thread-tab-close" onClick={() => closeSession(session.id)} type="button">×</button>
+                <button className="icon-btn" onClick={openWorkspaceBrowser} title="Change Workspace" type="button">↗</button>
               </div>
-            ))}
-          </div>
-          <button className="thread-tab-add" onClick={() => createNewSession()} type="button" title="New Session Tab">+</button>
-        </div>
-
-        <div id="messages">
-          <div className="session-overview">
-            <div className="overview-card">
-              <span className="overview-label">Workspace</span>
-              <strong>{shortWorkspaceLabel(activeSession.workspace)}</strong>
-              <span className="overview-meta">{activeSession.workspace}</span>
             </div>
-            <div className="overview-card">
-              <span className="overview-label">Thread</span>
-              <strong>{activeThread?.name || activeThread?.preview?.slice(0, 44) || 'Fresh thread'}</strong>
-              <span className="overview-meta">{activeSession.threadList.length} threads available</span>
-            </div>
-            <div className="overview-card compact">
-              <span className="overview-label">Runtime</span>
-              <strong>{connectionStatus === 'connected' ? 'Ready' : connectionStatus === 'connecting' ? 'Booting' : 'Offline'}</strong>
-              <span className="overview-meta">{activeSession.sandbox} / {activeSession.approvalPolicy}</span>
-            </div>
-          </div>
-
-          <div className={`debug-panel${debugOpen ? ' open' : ''}`}>
-            <button className="debug-panel-header" onClick={() => setDebugOpen((value) => !value)} type="button">
-              <strong>Lifecycle Debug</strong>
-              <span>status={connectionStatus} transportGen={transportGenerationRef.current} client={clientIdRef.current || 'none'}</span>
-              <span className={`debug-chevron${debugOpen ? ' open' : ''}`}>▶</span>
-            </button>
-            {debugOpen ? (
-              <div className="debug-panel-body">
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
-                   <button className="debug-clear" onClick={() => setDebugEvents([])} type="button">Clear Logs</button>
+            {!sidebarWorkspaceCollapsed ? (
+              <>
+                <div id="workspace-path" title="Click to browse" onClick={openWorkspaceBrowser}>
+                  {activeSession.workspace}
                 </div>
-                {debugEvents.length === 0 ? (
-                  <div className="debug-line muted">No events yet</div>
-                ) : (
-                  debugEvents.map((line, index) => <div className="debug-line" key={`${line}-${index}`}>{line}</div>)
-                )}
-              </div>
-            ) : null}
-          </div>
-
-          {activeSession.messages.length === 0 ? (
-            <div id="welcome">
-              <div className="welcome-hero">
-                <div className="welcome-eyebrow">Next.js control room</div>
-                <div className="logo-large">⬡</div>
-                <h2>Ready for session-based Codex workspaces</h2>
-                <div className="hero-grid">
-                  <div className="hero-card">
-                    <strong>Thread tabs</strong>
-                    <span>Top tabs now map to the conversations you actually work in.</span>
-                  </div>
-                  <div className="hero-card">
-                    <strong>Bridge-backed</strong>
-                    <span>The same Codex RPC websocket flow still powers threads.</span>
-                  </div>
-                </div>
-                <div className="prompt-suggestions">
-                  {PROMPT_SUGGESTIONS.map((prompt) => (
+                <div className="workspace-list">
+                  {workspaceChoices.map((workspace) => (
                     <button
-                      key={prompt}
-                      className="prompt-chip"
-                      onClick={() => { setComposerText(prompt); composerRef.current?.focus(); }}
+                      key={workspace}
+                      className={`workspace-link${workspace === activeSession.workspace ? ' active' : ''}`}
+                      onClick={() => switchWorkspace(workspace)}
                       type="button"
                     >
-                      {prompt}
+                      {shortWorkspaceLabel(workspace)}
                     </button>
                   ))}
                 </div>
+              </>
+            ) : null}
+          </div>
+
+        </div>
+
+        <div className="sidebar-footer">
+          <div className="status-shell">
+            <div id="status-dot" className={connectionStatus} />
+            <span id="status-text">{connectionStatus}</span>
+          </div>
+          <button className="settings-btn icon-only" onClick={() => setSettingsOpen(true)} title="Settings" type="button">⚙</button>
+        </div>
+      </div>
+
+      <div id="chat-area">
+        <div id="top-bar">
+          <div className="top-bar-main">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} type="button">☰</button>
+            <button className="desktop-menu-btn" onClick={() => setSidebarOpen((value) => !value)} type="button">≡</button>
+            <div className="top-bar-copy">
+              <strong>{activeThread?.name || activeThread?.preview?.slice(0, 44) || 'New thread'}</strong>
+              <span>{shortWorkspaceLabel(activeSession.workspace)}</span>
+            </div>
+          </div>
+          <div className="top-bar-actions">
+            <span className={`top-meta bridge-flag ${connectionStatus}`}>{bridgeLabel}</span>
+            <span className={`top-meta top-state ${activeSession.turnState}`}>{turnLabel}</span>
+            <button className={`top-icon${debugOpen ? ' active' : ''}`} onClick={() => setDebugOpen((value) => !value)} type="button" title="Debug">⋯</button>
+          </div>
+        </div>
+
+        <div id="messages">
+          {activeSession.messages.length === 0 ? (
+            <div className="empty-state">
+              <h2>One thread. One input.</h2>
+              <p>History and workspace are in the left panel.</p>
+              <div className="empty-actions">
+                {PROMPT_SUGGESTIONS.slice(0, 2).map((prompt) => (
+                  <button
+                    key={prompt}
+                    className="text-action"
+                    onClick={() => {
+                      setComposerText(prompt);
+                      composerRef.current?.focus();
+                    }}
+                    type="button"
+                  >
+                    {prompt}
+                  </button>
+                ))}
               </div>
             </div>
           ) : (
@@ -1522,10 +1315,6 @@ export default function CodexBridgeApp() {
 
         <div id="input-area">
           <div id="composer-shell">
-            <div id="composer-meta">
-              <span className="meta-pill">Thread composer</span>
-              <span>Enter to send, Shift+Enter for a new line</span>
-            </div>
             <textarea
               id="prompt-input"
               ref={composerRef}
@@ -1536,10 +1325,55 @@ export default function CodexBridgeApp() {
               onKeyDown={handleComposerKeyDown}
               disabled={connectionStatus !== 'connected'}
             />
+            <div id="composer-meta">
+              <div className="composer-controls">
+                <select
+                  id="model-select"
+                  value={activeSession.model}
+                  onChange={(event) => updateActiveSession((session) => ({ ...session, model: event.target.value }))}
+                >
+                  {(modelOptions.length ? modelOptions : [{ name: 'gpt-4o-codex', displayName: 'gpt-4o-codex' }]).map((model) => (
+                    <option key={model.name || model.id} value={model.name || model.id}>
+                      {model.displayName || model.name || model.id}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  id="approval-select"
+                  value={activeSession.approvalPolicy}
+                  onChange={(event) => updateActiveSession((session) => ({ ...session, approvalPolicy: event.target.value }))}
+                >
+                  <option value="on-request">on-request</option>
+                  <option value="untrusted">untrusted</option>
+                  <option value="never">never</option>
+                </select>
+                <div className={`composer-workspace${workspaceCollapsed ? ' collapsed' : ''}`}>
+                  <button
+                    className="composer-collapse"
+                    onClick={() => setWorkspaceCollapsed((value) => !value)}
+                    title={workspaceCollapsed ? 'Expand Workspace' : 'Collapse Workspace'}
+                    type="button"
+                  >
+                    {workspaceCollapsed ? '▸' : '▾'}
+                  </button>
+                  <button
+                    className="composer-path"
+                    onClick={openWorkspaceBrowser}
+                    title={activeSession.workspace}
+                    type="button"
+                  >
+                    {workspaceCollapsed ? '⌂' : shortWorkspaceLabel(activeSession.workspace)}
+                  </button>
+                </div>
+              </div>
+              <div className="composer-actions">
+                <span>Enter to send</span>
+                <button id="btn-send" disabled={connectionStatus !== 'connected' || activeSession.isTurnActive} onClick={sendTurn} type="button">
+                  Send
+                </button>
+              </div>
+            </div>
           </div>
-          <button id="btn-send" disabled={connectionStatus !== 'connected' || activeSession.isTurnActive} onClick={sendTurn} type="button">
-            Send
-          </button>
         </div>
       </div>
 
@@ -1560,10 +1394,96 @@ export default function CodexBridgeApp() {
         </div>
       ) : null}
 
+      {debugOpen ? (
+        <div id="debug-modal" className="show" onClick={() => setDebugOpen(false)}>
+          <div id="debug-box" onClick={(event) => event.stopPropagation()}>
+            <div className="debug-panel-header">
+              <strong>Debug</strong>
+              <span>status={connectionStatus} client={clientIdRef.current || 'none'}</span>
+            </div>
+            <div className="debug-panel-body">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                <button className="debug-clear" onClick={() => setDebugEvents([])} type="button">Clear</button>
+              </div>
+              {debugEvents.length === 0 ? (
+                <div className="debug-line muted">No events yet</div>
+              ) : (
+                debugEvents.map((line, index) => <div className="debug-line" key={`${line}-${index}`}>{line}</div>)
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {settingsOpen ? (
         <div id="settings-modal" className="show">
           <div id="settings-box">
-            <h3>Settings</h3>
+            <div className="modal-head">
+              <h3>Settings</h3>
+              <button className="modal-close" onClick={() => setSettingsOpen(false)} type="button" aria-label="Close settings">
+                ×
+              </button>
+            </div>
+            <div className="settings-section">
+              <div className="settings-title">Session Prompt</div>
+              <div className="setting-group">
+                <label htmlFor="session-developer-instructions">Developer Instructions</label>
+                <textarea
+                  id="session-developer-instructions"
+                  className="settings-textarea"
+                  onChange={(event) => setSettings((current) => ({ ...current, sessionDeveloperInstructions: event.target.value }))}
+                  placeholder="Inject custom session instructions at the developer/system layer for new threads."
+                  rows={6}
+                  value={settings.sessionDeveloperInstructions}
+                />
+              </div>
+              <div className="settings-help">
+                Applied as <code>developerInstructions</code> when a new thread starts. Existing threads keep their current instructions.
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-title">Runtime</div>
+              <div className="setting-group">
+                <label htmlFor="settings-model-select">Model</label>
+                <select
+                  id="settings-model-select"
+                  value={activeSession.model}
+                  onChange={(event) => updateActiveSession((session) => ({ ...session, model: event.target.value }))}
+                >
+                  {(modelOptions.length ? modelOptions : [{ name: 'gpt-4o-codex', displayName: 'gpt-4o-codex' }]).map((model) => (
+                    <option key={model.name || model.id} value={model.name || model.id}>
+                      {model.displayName || model.name || model.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="setting-group">
+                <label htmlFor="settings-sandbox-select">Sandbox</label>
+                <select
+                  id="settings-sandbox-select"
+                  value={activeSession.sandbox}
+                  onChange={(event) => updateActiveSession((session) => ({ ...session, sandbox: event.target.value }))}
+                >
+                  <option value="workspace-write">workspace-write</option>
+                  <option value="read-only">read-only</option>
+                  <option value="danger-full-access">danger-full-access</option>
+                </select>
+              </div>
+              <div className="setting-group">
+                <label htmlFor="settings-approval-select">Approval</label>
+                <select
+                  id="settings-approval-select"
+                  value={activeSession.approvalPolicy}
+                  onChange={(event) => updateActiveSession((session) => ({ ...session, approvalPolicy: event.target.value }))}
+                >
+                  <option value="on-request">on-request</option>
+                  <option value="untrusted">untrusted</option>
+                  <option value="never">never</option>
+                </select>
+              </div>
+            </div>
+
             <div className="settings-section">
               <div className="settings-title">Environment Capabilities</div>
               <div className="capability-list">
@@ -1710,7 +1630,7 @@ export default function CodexBridgeApp() {
   return (
                     <button
                       key={project}
-                      className={`prompt-chip${active ? ' active-chip' : ''}`}
+                      className={`text-action${active ? ' active-chip' : ''}`}
                       onClick={() => browseDirectory(project)}
                       type="button"
                     >
@@ -1750,7 +1670,5 @@ export default function CodexBridgeApp() {
         </div>
       ) : null}
     </div>
-  );
-}
   );
 }
