@@ -1,18 +1,22 @@
 const http = require('http');
-const next = require('next');
 const { randomUUID } = require('crypto');
 const { execFileSync } = require('child_process');
 const { WebSocket } = require('ws');
+const bridgeDefaults = require('./config/bridge.json');
 
-const CONFIG = {
-  PORT: parseInt(process.env.BRIDGE_PORT, 10) || 8080,
-  CODEX_WS: process.env.CODEX_WS_URL || 'ws://127.0.0.1:7676',
-  TOKEN: process.env.BRIDGE_TOKEN || 'changeme',
-  EVENTS_PATH: process.env.BRIDGE_EVENTS_PATH || '/codex-events',
-  RPC_PATH: process.env.BRIDGE_RPC_PATH || '/codex-rpc',
-};
+const CONFIG = resolveBridgeConfig(process.env);
 
 const clients = new Map();
+
+function resolveBridgeConfig(env) {
+  return {
+    PORT: parseInt(env.BRIDGE_PORT, 10) || bridgeDefaults.defaultBridgePort,
+    CODEX_WS: env.CODEX_WS_URL || bridgeDefaults.defaultCodexWs,
+    TOKEN: env.BRIDGE_TOKEN || bridgeDefaults.defaultToken,
+    EVENTS_PATH: env.BRIDGE_EVENTS_PATH || bridgeDefaults.defaultEventsPath,
+    RPC_PATH: env.BRIDGE_RPC_PATH || bridgeDefaults.defaultRpcPath,
+  };
+}
 
 function writeJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
@@ -20,8 +24,17 @@ function writeJson(res, statusCode, payload) {
     'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
     Pragma: 'no-cache',
     Expires: '0',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
   });
   res.end(JSON.stringify(payload));
+}
+
+function applyCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
 function detectBinary(command) {
@@ -151,19 +164,18 @@ function createClient(res) {
 }
 
 async function main() {
-  const dev = process.env.NODE_ENV !== 'production';
   const server = http.createServer();
-  const nextApp = next({
-    dev,
-    dir: __dirname,
-    hostname: 'localhost',
-    port: CONFIG.PORT,
-  });
-  const nextHandler = nextApp.getRequestHandler();
-  await nextApp.prepare();
 
   server.on('request', async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
+
+    applyCors(res);
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
 
     if (url.pathname === '/health') {
       writeJson(res, 200, {
@@ -197,6 +209,7 @@ async function main() {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
       });
 
       const client = createClient(res);
@@ -246,15 +259,18 @@ async function main() {
       return;
     }
 
-    nextHandler(req, res);
+    writeJson(res, 404, {
+      error: 'Not found',
+      availablePaths: ['/health', '/ready', '/capabilities', CONFIG.EVENTS_PATH, CONFIG.RPC_PATH],
+    });
   });
 
   server.listen(CONFIG.PORT, () => {
-    console.log(`🚀 Codex Bridge running on http://localhost:${CONFIG.PORT}`);
+    console.log(`🚀 Codex Bridge API running on http://localhost:${CONFIG.PORT}`);
     console.log(`🎯 Codex target: ${CONFIG.CODEX_WS}`);
     console.log(`📡 SSE: http://localhost:${CONFIG.PORT}${CONFIG.EVENTS_PATH}?token=${CONFIG.TOKEN}`);
     console.log(`📨 RPC: http://localhost:${CONFIG.PORT}${CONFIG.RPC_PATH}?token=${CONFIG.TOKEN}&clientId=...`);
-    if (CONFIG.TOKEN === 'changeme') {
+    if (CONFIG.TOKEN === bridgeDefaults.defaultToken) {
       console.warn('⚠️ BRIDGE_TOKEN is using the default value. Set a custom token before exposing this bridge beyond localhost.');
     }
   });

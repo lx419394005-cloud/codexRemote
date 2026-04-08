@@ -4,9 +4,11 @@
   "description": "A secure bridge to access Codex CLI remotely via JSON-RPC over WebSocket",
   "main": "bridge.js",
   "scripts": {
-    "dev": "NODE_ENV=development node bridge.js",
+    "dev": "next dev --webpack --hostname 0.0.0.0 --port ${FRONTEND_PORT:-8080}",
+    "dev:bridge": "NODE_ENV=development BRIDGE_PORT=${BRIDGE_PORT:-8081} node bridge.js",
     "build": "next build",
-    "start": "NODE_ENV=production node bridge.js"
+    "start": "next start --hostname 0.0.0.0 --port ${FRONTEND_PORT:-8080}",
+    "start:bridge": "NODE_ENV=production BRIDGE_PORT=${BRIDGE_PORT:-8081} node bridge.js"
   },
   "dependencies": {
     "http-proxy": "^1.18.1",

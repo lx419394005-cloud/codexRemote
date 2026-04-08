@@ -1,6 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import {
+  BRIDGE_STORAGE_KEYS,
+  DEFAULT_BRIDGE_TOKEN,
+  buildBridgeUrl,
+  createDefaultCapabilities,
+  getInitialBridgeToken,
+} from '../lib/bridge-config';
+import { buildTunnelCommands, createDefaultSettings } from '../lib/tunnel-config';
 
 const DEFAULT_WORKSPACE = '/Volumes/new/dev/web/codeonline';
 const TRUSTED_PROJECTS = [
@@ -15,8 +23,8 @@ const PROMPT_SUGGESTIONS = [
   'Refactor the current feature without changing behavior, then explain the diff.',
   'Improve this UI with stronger hierarchy and better mobile spacing.',
 ];
-const RECENT_WORKSPACES_KEY = 'codex-bridge-recent-workspaces';
-const BRIDGE_SETTINGS_KEY = 'codex-bridge-settings';
+const RECENT_WORKSPACES_KEY = BRIDGE_STORAGE_KEYS.recentWorkspaces;
+const BRIDGE_SETTINGS_KEY = BRIDGE_STORAGE_KEYS.settings;
 
 function makeId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
@@ -68,18 +76,6 @@ function formatDate(value) {
 }
 
 function normalizeFileEntries(entries) {
-  
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return (entries || []).map((entry) => ({
     name: entry.name || entry.fileName || '',
     type: entry.type || (entry.isDirectory ? 'directory' : 'file'),
@@ -102,26 +98,6 @@ function buildWorkspaceList(current, stored = []) {
       return true;
     })
     .slice(0, 8);
-}
-
-function createDefaultSettings() {
-  return {
-    autoApproveAll: false,
-    browserNotifications: false,
-    cfTunnelName: 'codex-bridge',
-    cfTunnelDomain: '',
-    cfTunnelUrl: 'http://127.0.0.1:8080',
-  };
-}
-
-function createDefaultCapabilities() {
-  return {
-    codexRpc: { available: false, transport: '', target: '' },
-    screenshot: { available: false, path: null },
-    cloudflared: { available: false, path: null },
-    git: { available: false, path: null },
-    playwright: { available: false, path: null },
-  };
 }
 
 function escapeHtml(text) {
@@ -254,18 +230,6 @@ function MessageItem({ message, onToggleReasoning }) {
   }
 
   if (message.kind === 'command') {
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return (
       <div className="event-card command-card">
         <div className="event-card-header">
@@ -278,18 +242,6 @@ function MessageItem({ message, onToggleReasoning }) {
   }
 
   if (message.kind === 'file-change') {
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return (
       <div className="event-card file-card">
         <div className="event-card-header">
@@ -311,18 +263,6 @@ function MessageItem({ message, onToggleReasoning }) {
   }
 
   if (message.kind === 'approval') {
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return (
       <div className="event-card approval-card">
         <div className="event-card-header">
@@ -335,18 +275,6 @@ function MessageItem({ message, onToggleReasoning }) {
   }
 
   if (message.kind === 'reasoning') {
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return (
       <div className="msg-wrapper reasoning-block">
         <div className="msg-card">
@@ -361,18 +289,6 @@ function MessageItem({ message, onToggleReasoning }) {
   }
 
   if (message.kind === 'typing') {
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return (
       <div className="msg-wrapper agent">
         <div className="msg-card">
@@ -389,19 +305,6 @@ function MessageItem({ message, onToggleReasoning }) {
       </div>
     );
   }
-
-  
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return (
     <div className={`msg-wrapper ${message.role}`}>
       <div className="msg-card">
@@ -430,19 +333,6 @@ function FileTree({ entries, rootPath, folderContents, expandedFolders, onToggle
     const isDirectory = entry.type === 'directory';
     const isExpanded = expandedFolders[fullPath];
     const children = folderContents[fullPath] || [];
-
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return (
       <div key={fullPath}>
         <div
@@ -477,7 +367,7 @@ export default function CodexBridgeApp() {
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [composerText, setComposerText] = useState('');
   const [modelOptions, setModelOptions] = useState([]);
-  const [token, setToken] = useState('changeme');
+  const [token, setToken] = useState(DEFAULT_BRIDGE_TOKEN);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [workspaceBrowserPath, setWorkspaceBrowserPath] = useState('/');
   const [workspaceBrowserEntries, setWorkspaceBrowserEntries] = useState([]);
@@ -553,7 +443,7 @@ export default function CodexBridgeApp() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const nextToken = params.get('token') || 'changeme';
+    const nextToken = getInitialBridgeToken();
     const cwd = params.get('cwd') || DEFAULT_WORKSPACE;
     pushDebug('boot params', `token=${nextToken ? 'present' : 'missing'} cwd=${cwd}`);
     setToken(nextToken);
@@ -602,7 +492,7 @@ export default function CodexBridgeApp() {
     let cancelled = false;
     async function loadCapabilities() {
       try {
-        const response = await fetch('/capabilities');
+        const response = await fetch(buildBridgeUrl('/capabilities'));
         const data = await response.json();
         if (!cancelled) {
           setCapabilities(data);
@@ -614,18 +504,6 @@ export default function CodexBridgeApp() {
       }
     }
     loadCapabilities();
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return () => {
       cancelled = true;
     };
@@ -638,36 +516,12 @@ export default function CodexBridgeApp() {
       appendSystemMessage(activeSessionIdRef.current, 'Auto-approved by local All Accept setting.', 'success');
       notifyBrowser('Approval auto-accepted', 'A pending approval was accepted automatically.');
     }, 120);
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return () => window.clearTimeout(timer);
   }, [approvalRequest, settings.autoApproveAll]);
 
   useEffect(() => {
     const handleMarkedReady = () => setMarkdownTick((value) => value + 1);
     window.addEventListener('marked-ready', handleMarkedReady);
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return () => window.removeEventListener('marked-ready', handleMarkedReady);
   }, []);
 
@@ -681,19 +535,6 @@ export default function CodexBridgeApp() {
     window.addEventListener('pageshow', logPageShow);
     window.addEventListener('pagehide', logPageHide);
     window.addEventListener('beforeunload', logBeforeUnload);
-
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return () => {
       document.removeEventListener('visibilitychange', logVisibility);
       window.removeEventListener('pageshow', logPageShow);
@@ -714,20 +555,19 @@ export default function CodexBridgeApp() {
       }
     };
     document.addEventListener('keydown', handleKeyDown);
-    
-  // Modern UX: Close modal on ESC key
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
+    if (!settingsOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setSettingsOpen(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
-  return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [settingsOpen]);
 
   useEffect(() => {
     if (!hydrated || !token) return undefined;
@@ -754,7 +594,7 @@ export default function CodexBridgeApp() {
       const generation = ++transportGenerationRef.current;
       pushDebug('transport connect', `generation=${generation}`);
       setConnectionStatus('connecting');
-      const source = new window.EventSource(`/codex-events?token=${encodeURIComponent(token)}`);
+      const source = new window.EventSource(`${buildBridgeUrl('/codex-events')}?token=${encodeURIComponent(token)}`);
       eventSourceRef.current = source;
 
       source.onopen = () => {
@@ -869,19 +709,6 @@ export default function CodexBridgeApp() {
       pushDebug('transport schedule', 'connect in 300ms');
       connect();
     }, 300);
-
-    
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return () => {
       disposed = true;
       pushDebug('transport effect', 'cleanup');
@@ -1010,7 +837,7 @@ export default function CodexBridgeApp() {
       throw new Error('Bridge session not ready');
     }
 
-    const response = await fetch(`/codex-rpc?token=${encodeURIComponent(token)}&clientId=${encodeURIComponent(clientIdRef.current)}`, {
+    const response = await fetch(`${buildBridgeUrl('/codex-rpc')}?token=${encodeURIComponent(token)}&clientId=${encodeURIComponent(clientIdRef.current)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1433,23 +1260,7 @@ export default function CodexBridgeApp() {
   });
   const workspaceChoices = buildWorkspaceList(activeSession.workspace, recentWorkspaces);
   const activeThread = activeSession.threadList.find((thread) => thread.id === activeSession.threadId);
-  const cfQuickCommand = `cloudflared tunnel --url ${settings.cfTunnelUrl}`;
-  const cfNamedCommand = settings.cfTunnelDomain
-    ? `cloudflared tunnel route dns ${settings.cfTunnelName} ${settings.cfTunnelDomain}\ncloudflared tunnel run ${settings.cfTunnelName}`
-    : `cloudflared tunnel create ${settings.cfTunnelName}\ncloudflared tunnel run ${settings.cfTunnelName}`;
-
-  
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
+  const { quickCommand: cfQuickCommand, namedCommand: cfNamedCommand } = buildTunnelCommands(settings);
   return (
     <div className="bridge-root" onClickCapture={handleCopyClick}>
       <div id="header">
@@ -1944,6 +1755,20 @@ export default function CodexBridgeApp() {
                 type="text"
                 value={settings.cfTunnelUrl}
               />
+              <input
+                className="settings-input"
+                onChange={(event) => setSettings((current) => ({ ...current, cfTunnelConfigPath: event.target.value }))}
+                placeholder="cloudflared config path"
+                type="text"
+                value={settings.cfTunnelConfigPath}
+              />
+              <input
+                className="settings-input"
+                onChange={(event) => setSettings((current) => ({ ...current, cfTunnelId: event.target.value }))}
+                placeholder="Tunnel ID (reserved)"
+                type="text"
+                value={settings.cfTunnelId}
+              />
               <div className="settings-help">
                 Quick tunnel:
               </div>
@@ -1952,6 +1777,9 @@ export default function CodexBridgeApp() {
                 Named tunnel:
               </div>
               <pre className="settings-code">{cfNamedCommand}</pre>
+              <div className="settings-help">
+                Config path and tunnel id are reserved for a later managed launch flow.
+              </div>
             </div>
 
             <div className="actions">
@@ -1973,18 +1801,6 @@ export default function CodexBridgeApp() {
                 {TRUSTED_PROJECTS.map((project) => {
                   const name = project.split('/').pop() || project;
                   const active = project === pendingWorkspace;
-                  
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return (
                     <button
                       key={project}
@@ -2008,18 +1824,6 @@ export default function CodexBridgeApp() {
               {workspaceBrowserEntries.map((entry) => {
                 const fullPath = workspaceBrowserPath === '/' ? `/${entry.name}` : `${workspaceBrowserPath}/${entry.name}`;
                 const trusted = TRUSTED_PROJECTS.some((project) => fullPath === project || fullPath.startsWith(`${project}/`));
-                
-  // Modern UX: Close modal on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
-
   return (
                   <div key={fullPath} className="dir-item" onClick={() => browseDirectory(fullPath)}>
                     <span>{entry.name}</span>

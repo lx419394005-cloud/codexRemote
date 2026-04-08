@@ -1,0 +1,12 @@
+{
+  "defaultBridgeHost": "127.0.0.1",
+  "defaultBridgePort": 8081,
+  "defaultCodexWs": "ws://127.0.0.1:7677",
+  "defaultToken": "changeme",
+  "defaultEventsPath": "/codex-events",
+  "defaultRpcPath": "/codex-rpc",
+  "storageKeys": {
+    "recentWorkspaces": "codex-bridge-recent-workspaces",
+    "settings": "codex-bridge-settings"
+  }
+}
