@@ -1263,78 +1263,47 @@ export default function CodexBridgeApp() {
   const { quickCommand: cfQuickCommand, namedCommand: cfNamedCommand } = buildTunnelCommands(settings);
   return (
     <div className="bridge-root" onClickCapture={handleCopyClick}>
-      <div id="header">
-        <button id="sidebar-toggle" title="Toggle sidebar" onClick={() => setSidebarOpen((value) => !value)} type="button">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 12h18M3 6h18M3 18h18" />
-          </svg>
-        </button>
-        
-          <button 
-            className="mobile-menu-btn" 
-            style={{ display: 'none' }} 
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-          >
-            ☰
-          </button>
+      {/* Mobile Overlay */}
+      <div className={`mobile-overlay ${sidebarOpen ? 'active' : ''}`} onClick={() => setSidebarOpen(false)} />
+
+      {/* --- SIDEBAR --- */}
+      <div id="sidebar" className={sidebarOpen ? 'open' : ''}>
+        <div className="sidebar-header">
           <div className="logo">
-
-          <span>⬡</span>
-          Codex
+            <span>⬡</span>
+            Codex
+          </div>
+          <button className="mobile-close-btn" onClick={() => setSidebarOpen(false)} type="button">×</button>
         </div>
-        <div className="status-shell">
-          <div id="status-dot" className={connectionStatus} />
-          <span id="status-text">
-            {connectionStatus === 'connected'
-              ? 'Connected'
-              : connectionStatus === 'connecting'
-                ? 'Connecting...'
-                : 'Disconnected'}
-          </span>
+
+        <div className="sidebar-actions">
+          <button
+            id="btn-new-thread"
+            onClick={async () => {
+              updateActiveSession((session) => ({
+                ...session,
+                threadId: null,
+                currentTurnId: null,
+                isTurnActive: false,
+                turnState: 'idle',
+                label: shortWorkspaceLabel(session.workspace),
+                messages: [{ id: makeId('system'), kind: 'system', tone: 'success', content: 'Starting new thread...' }],
+              }));
+              await startThread();
+              await updateThreadList();
+              if (window.innerWidth <= 768) setSidebarOpen(false);
+            }}
+            type="button"
+          >
+            + New Thread
+          </button>
         </div>
-        <div className="spacer" />
-        <button className="header-action" onClick={() => setSettingsOpen(true)} type="button">
-          Settings
-        </button>
-        <span id="workspace-chip" title={activeSession.workspace}>
-          {activeSession.workspace}
-        </span>
-        {modelBadge ? <span id="model-badge">{modelBadge}</span> : null}
-      </div>
 
-      <div id="layout">
-        
-        <div 
-          className={`mobile-overlay ${sidebarOpen ? 'active' : ''}`} 
-          onClick={() => setSidebarOpen(false)}
-        />
-        <div id="sidebar" className={`${sidebarOpen ? 'open' : ''}`}>
-
+        <div className="sidebar-scrollable">
           <div className="sidebar-section">
-            <h3>Threads</h3>
-            <div className="section-actions">
-              <button
-                id="btn-new-thread"
-                onClick={async () => {
-                  updateActiveSession((session) => ({
-                    ...session,
-                    threadId: null,
-                    currentTurnId: null,
-                    isTurnActive: false,
-                    turnState: 'idle',
-                    label: shortWorkspaceLabel(session.workspace),
-                    messages: [{ id: makeId('system'), kind: 'system', tone: 'success', content: 'Starting new thread...' }],
-                  }));
-                  await startThread();
-                  await updateThreadList();
-                }}
-                type="button"
-              >
-                + New Thread
-              </button>
-              <button className="secondary" onClick={() => updateThreadList()} title="Refresh" type="button">
-                ↻
-              </button>
+            <div className="section-head">
+              <h3>Threads</h3>
+              <button className="icon-btn" onClick={() => updateThreadList()} title="Refresh" type="button">↻</button>
             </div>
             <input
               className="section-input"
@@ -1343,97 +1312,88 @@ export default function CodexBridgeApp() {
               type="text"
               value={threadFilter}
             />
-          </div>
-
-          <div id="thread-list">
-            {filteredThreads.length === 0 ? (
-              <div className="thread-empty">No threads yet</div>
-            ) : (
-              filteredThreads.map((thread) => (
-                <div
-                  key={thread.id}
-                  className={`thread-item${thread.id === activeSession.threadId ? ' active' : ''}`}
-                  onClick={() => loadThreadHistory(thread.id)}
-                >
-                  <div className="thread-title">{thread.preview?.slice(0, 40) || thread.name || 'unnamed'}</div>
-                  <div className="thread-meta">
-                    <span className="thread-status">
-                      {thread.status?.type === 'idle' ? '💤' : thread.status?.type === 'running' ? '🔄' : '📌'}
-                    </span>
-                    <span>{formatDate(thread.updatedAt)}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div id="workspace-section">
-            <div className="sidebar-section">
-              <h3>Workspace</h3>
-              <div id="workspace-path" title="Click to browse" onClick={openWorkspaceBrowser}>
-                {activeSession.workspace}
-              </div>
-              <div className="workspace-chip-list">
-                {workspaceChoices.map((workspace) => (
-                  <button
-                    key={workspace}
-                    className={`workspace-quick-chip${workspace === activeSession.workspace ? ' active' : ''}`}
-                    onClick={() => switchWorkspace(workspace)}
-                    type="button"
+            <div id="thread-list">
+              {filteredThreads.length === 0 ? (
+                <div className="thread-empty">No threads yet</div>
+              ) : (
+                filteredThreads.map((thread) => (
+                  <div
+                    key={thread.id}
+                    className={`thread-item${thread.id === activeSession.threadId ? ' active' : ''}`}
+                    onClick={() => {
+                      loadThreadHistory(thread.id);
+                      if (window.innerWidth <= 768) setSidebarOpen(false);
+                    }}
                   >
-                    {shortWorkspaceLabel(workspace)}
-                  </button>
-                ))}
-              </div>
-              <div id="file-tree">
-                <FileTree
-                  entries={activeSession.fileTreeEntries}
-                  rootPath={activeSession.fileTreeRoot}
-                  folderContents={activeSession.folderContents}
-                  expandedFolders={activeSession.expandedFolders}
-                  onToggleFolder={toggleFolder}
-                />
-              </div>
+                    <div className="thread-title">{thread.preview?.slice(0, 40) || thread.name || 'unnamed'}</div>
+                    <div className="thread-meta">
+                      <span className="thread-status">
+                        {thread.status?.type === 'idle' ? '💬' : thread.status?.type === 'running' ? '🔄' : '📌'}
+                      </span>
+                      <span>{formatDate(thread.updatedAt)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div id="workspace-section" className="sidebar-section">
+            <div className="section-head">
+              <h3>Workspace</h3>
+              <button className="icon-btn" onClick={openWorkspaceBrowser} title="Change Workspace" type="button">📁</button>
+            </div>
+            <div id="workspace-path" title="Click to browse" onClick={openWorkspaceBrowser}>
+              {activeSession.workspace}
+            </div>
+            <div className="workspace-chip-list">
+              {workspaceChoices.map((workspace) => (
+                <button
+                  key={workspace}
+                  className={`workspace-quick-chip${workspace === activeSession.workspace ? ' active' : ''}`}
+                  onClick={() => switchWorkspace(workspace)}
+                  type="button"
+                >
+                  {shortWorkspaceLabel(workspace)}
+                </button>
+              ))}
+            </div>
+            <div id="file-tree">
+              <FileTree
+                entries={activeSession.fileTreeEntries}
+                rootPath={activeSession.fileTreeRoot}
+                folderContents={activeSession.folderContents}
+                expandedFolders={activeSession.expandedFolders}
+                onToggleFolder={toggleFolder}
+              />
             </div>
           </div>
         </div>
 
-        <div id="chat-area">
-          <div className="thread-tabs">
-            <div className="thread-tab-list">
-              {sessions.map((session) => (
-                <div key={session.id} className={`thread-tab${session.id === activeSessionId ? ' active' : ''}`}>
-                  <button
-                    className="thread-tab-main"
-                    onClick={() => setActiveSessionId(session.id)}
-                    type="button"
-                  >
-                    <span className="thread-tab-title">{session.label || shortWorkspaceLabel(session.workspace)}</span>
-                    <span className="thread-tab-meta">{shortWorkspaceLabel(session.workspace)}</span>
-                  </button>
-                  <button
-                    className="thread-tab-close"
-                    onClick={() => closeSession(session.id)}
-                    type="button"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-            <button className="thread-tab-add" onClick={() => createNewSession()} type="button">
-              + Thread
-            </button>
+        <div className="sidebar-footer">
+          <button className="settings-btn" onClick={() => setSettingsOpen(true)} type="button">
+            ⚙️ Settings
+          </button>
+          <div className="status-shell">
+            <div id="status-dot" className={connectionStatus} />
+            <span id="status-text">
+              {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+            </span>
           </div>
-          <div id="toolbar">
+        </div>
+      </div>
+
+      {/* --- MAIN CHAT AREA --- */}
+      <div id="chat-area">
+        <div id="top-bar">
+          <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} type="button">☰</button>
+          <div className="top-bar-controls">
             <select
               id="model-select"
               value={activeSession.model}
-              onChange={(event) =>
-                updateActiveSession((session) => ({ ...session, model: event.target.value }))
-              }
+              onChange={(event) => updateActiveSession((session) => ({ ...session, model: event.target.value }))}
             >
-              {(modelOptions.length ? modelOptions : [{ name: 'gpt-5.4-codex', displayName: 'gpt-5.4-codex' }]).map((model) => (
+              {(modelOptions.length ? modelOptions : [{ name: 'gpt-4o-codex', displayName: 'gpt-4o-codex' }]).map((model) => (
                 <option key={model.name || model.id} value={model.name || model.id}>
                   {model.displayName || model.name || model.id}
                 </option>
@@ -1442,9 +1402,7 @@ export default function CodexBridgeApp() {
             <select
               id="sandbox-select"
               value={activeSession.sandbox}
-              onChange={(event) =>
-                updateActiveSession((session) => ({ ...session, sandbox: event.target.value }))
-              }
+              onChange={(event) => updateActiveSession((session) => ({ ...session, sandbox: event.target.value }))}
             >
               <option value="workspace-write">workspace-write</option>
               <option value="read-only">read-only</option>
@@ -1453,187 +1411,135 @@ export default function CodexBridgeApp() {
             <select
               id="approval-select"
               value={activeSession.approvalPolicy}
-              onChange={(event) =>
-                updateActiveSession((session) => ({ ...session, approvalPolicy: event.target.value }))
-              }
+              onChange={(event) => updateActiveSession((session) => ({ ...session, approvalPolicy: event.target.value }))}
             >
               <option value="on-request">on-request</option>
               <option value="untrusted">untrusted</option>
               <option value="never">never</option>
             </select>
-            <div className="spacer" />
-            <button
-              className={`debug-toggle${debugOpen ? ' active' : ''}`}
-              onClick={() => setDebugOpen((value) => !value)}
-              type="button"
-            >
-              {debugOpen ? 'Hide Debug' : 'Show Debug'}
-            </button>
-            <button
-              className="debug-clear"
-              onClick={() => setDebugEvents([])}
-              type="button"
-            >
-              Clear Logs
-            </button>
-            <span id="turn-indicator" className={activeSession.turnState}>
-              {activeSession.turnState === 'running'
-                ? 'Running'
-                : activeSession.turnState === 'done'
-                  ? 'Done'
-                  : activeSession.turnState === 'error'
-                    ? 'Error'
-                    : 'Idle'}
-            </span>
+          </div>
+          <div className="spacer" />
+          {modelBadge && <span id="model-badge">{modelBadge}</span>}
+          <button className={`debug-toggle${debugOpen ? ' active' : ''}`} onClick={() => setDebugOpen((value) => !value)} type="button">
+            {debugOpen ? 'Hide Debug' : 'Debug'}
+          </button>
+          <span id="turn-indicator" className={activeSession.turnState}>
+            {activeSession.turnState === 'running' ? 'Running' : activeSession.turnState === 'done' ? 'Done' : activeSession.turnState === 'error' ? 'Error' : 'Idle'}
+          </span>
+        </div>
+
+        <div className="thread-tabs">
+          <div className="thread-tab-list">
+            {sessions.map((session) => (
+              <div key={session.id} className={`thread-tab${session.id === activeSessionId ? ' active' : ''}`}>
+                <button className="thread-tab-main" onClick={() => setActiveSessionId(session.id)} type="button">
+                  <span className="thread-tab-title">{session.label || shortWorkspaceLabel(session.workspace)}</span>
+                  <span className="thread-tab-meta">{shortWorkspaceLabel(session.workspace)}</span>
+                </button>
+                <button className="thread-tab-close" onClick={() => closeSession(session.id)} type="button">×</button>
+              </div>
+            ))}
+          </div>
+          <button className="thread-tab-add" onClick={() => createNewSession()} type="button" title="New Session Tab">+</button>
+        </div>
+
+        <div id="messages">
+          <div className="session-overview">
+            <div className="overview-card">
+              <span className="overview-label">Workspace</span>
+              <strong>{shortWorkspaceLabel(activeSession.workspace)}</strong>
+              <span className="overview-meta">{activeSession.workspace}</span>
+            </div>
+            <div className="overview-card">
+              <span className="overview-label">Thread</span>
+              <strong>{activeThread?.name || activeThread?.preview?.slice(0, 44) || 'Fresh thread'}</strong>
+              <span className="overview-meta">{activeSession.threadList.length} threads available</span>
+            </div>
+            <div className="overview-card compact">
+              <span className="overview-label">Runtime</span>
+              <strong>{connectionStatus === 'connected' ? 'Ready' : connectionStatus === 'connecting' ? 'Booting' : 'Offline'}</strong>
+              <span className="overview-meta">{activeSession.sandbox} / {activeSession.approvalPolicy}</span>
+            </div>
           </div>
 
-          <div id="messages">
-            <div className="session-overview">
-              <div className="overview-card">
-                <span className="overview-label">Workspace</span>
-                <strong>{shortWorkspaceLabel(activeSession.workspace)}</strong>
-                <span className="overview-meta">{activeSession.workspace}</span>
-              </div>
-              <div className="overview-card">
-                <span className="overview-label">Thread</span>
-                <strong>{activeThread?.name || activeThread?.preview?.slice(0, 44) || 'Fresh thread'}</strong>
-                <span className="overview-meta">{activeSession.threadList.length} threads available</span>
-              </div>
-              <div className="overview-card compact">
-                <span className="overview-label">Runtime</span>
-                <strong>{connectionStatus === 'connected' ? 'Ready' : connectionStatus === 'connecting' ? 'Booting' : 'Offline'}</strong>
-                <span className="overview-meta">{activeSession.sandbox} / {activeSession.approvalPolicy}</span>
-              </div>
-            </div>
-            <div className={`debug-panel${debugOpen ? ' open' : ''}`}>
-              <button
-                className="debug-panel-header"
-                onClick={() => setDebugOpen((value) => !value)}
-                type="button"
-              >
-                <strong>Lifecycle Debug</strong>
-                <span>
-                  status={connectionStatus} transportGen={transportGenerationRef.current} client={clientIdRef.current || 'none'}
-                </span>
-                <span className={`debug-chevron${debugOpen ? ' open' : ''}`}>▶</span>
-              </button>
-              {debugOpen ? (
-                <div className="debug-panel-body">
-                  {debugEvents.length === 0 ? (
-                    <div className="debug-line muted">No events yet</div>
-                  ) : (
-                    debugEvents.map((line, index) => (
-                      <div className="debug-line" key={`${line}-${index}`}>
-                        {line}
-                      </div>
-                    ))
-                  )}
+          <div className={`debug-panel${debugOpen ? ' open' : ''}`}>
+            <button className="debug-panel-header" onClick={() => setDebugOpen((value) => !value)} type="button">
+              <strong>Lifecycle Debug</strong>
+              <span>status={connectionStatus} transportGen={transportGenerationRef.current} client={clientIdRef.current || 'none'}</span>
+              <span className={`debug-chevron${debugOpen ? ' open' : ''}`}>▶</span>
+            </button>
+            {debugOpen ? (
+              <div className="debug-panel-body">
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                   <button className="debug-clear" onClick={() => setDebugEvents([])} type="button">Clear Logs</button>
                 </div>
-              ) : (
-                <div className="debug-panel-preview">
-                  Hidden by default. Open when you need connection lifecycle details.
-                </div>
-              )}
-            </div>
-            {activeSession.messages.length === 0 ? (
-              <div id="welcome">
-                <div className="welcome-hero">
-                  <div className="welcome-eyebrow">Next.js control room</div>
-                  <div className="logo-large">⬡</div>
-                  <h2>Ready for session-based Codex workspaces</h2>
-                  <p>
-                    The UI is now mounted through Next.js so we can keep growing toward multi-tab,
-                    multi-workspace, split-pane threads without keeping everything trapped in one
-                    HTML file.
-                  </p>
-                  <div className="hero-grid">
-                    <div className="hero-card">
-                      <strong>Thread tabs</strong>
-                      <span>Top tabs now map to the conversations you actually work in.</span>
-                    </div>
-                    <div className="hero-card">
-                      <strong>Bridge-backed</strong>
-                      <span>The same Codex RPC websocket flow still powers threads, workspace, and approvals.</span>
-                    </div>
-                    <div className="hero-card">
-                      <strong>Next-driven</strong>
-                      <span>We can now add tabs, split layouts, and richer routing without rewriting from scratch.</span>
-                    </div>
-                  </div>
-                  <div className="prompt-suggestions">
-                    <div className="quick-select-title">Quick workspace jumps</div>
-                    {workspaceChoices.map((workspace) => (
-                      <button
-                        key={workspace}
-                        className={`prompt-chip${workspace === activeSession.workspace ? ' active-chip' : ''}`}
-                        onClick={() => switchWorkspace(workspace)}
-                        type="button"
-                      >
-                        {shortWorkspaceLabel(workspace)}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="prompt-suggestions">
-                    {PROMPT_SUGGESTIONS.map((prompt) => (
-                      <button
-                        key={prompt}
-                        className="prompt-chip"
-                        onClick={() => {
-                          setComposerText(prompt);
-                          composerRef.current?.focus();
-                        }}
-                        type="button"
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="shortcuts">
-                  <div>
-                    <div className="shortcuts-title">Fast controls</div>
-                    <div className="shortcut"><kbd>Enter</kbd><span>Send message</span></div>
-                    <div className="shortcut"><kbd>Shift + Enter</kbd><span>New line</span></div>
-                    <div className="shortcut"><kbd>Ctrl/Cmd + L</kbd><span>Clear chat</span></div>
-                  </div>
-                  <div className="shortcut-note">
-                    Tip: model, sandbox, approval, thread list, and workspace path all still feed into
-                    Codex. We are just controlling them from a real app shell now.
-                  </div>
-                </div>
+                {debugEvents.length === 0 ? (
+                  <div className="debug-line muted">No events yet</div>
+                ) : (
+                  debugEvents.map((line, index) => <div className="debug-line" key={`${line}-${index}`}>{line}</div>)
+                )}
               </div>
-            ) : (
-              activeSession.messages.map((message) => (
-                <MessageItem key={message.id} message={message} onToggleReasoning={toggleReasoning} />
-              ))
-            )}
-            <div ref={messagesEndRef} />
+            ) : null}
           </div>
 
-          <div id="input-area">
-            <div id="composer-shell">
-              <div id="composer-meta">
-                <span className="meta-pill">Thread composer</span>
-                <span>Enter to send, Shift+Enter for a new line</span>
+          {activeSession.messages.length === 0 ? (
+            <div id="welcome">
+              <div className="welcome-hero">
+                <div className="welcome-eyebrow">Next.js control room</div>
+                <div className="logo-large">⬡</div>
+                <h2>Ready for session-based Codex workspaces</h2>
+                <div className="hero-grid">
+                  <div className="hero-card">
+                    <strong>Thread tabs</strong>
+                    <span>Top tabs now map to the conversations you actually work in.</span>
+                  </div>
+                  <div className="hero-card">
+                    <strong>Bridge-backed</strong>
+                    <span>The same Codex RPC websocket flow still powers threads.</span>
+                  </div>
+                </div>
+                <div className="prompt-suggestions">
+                  {PROMPT_SUGGESTIONS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      className="prompt-chip"
+                      onClick={() => { setComposerText(prompt); composerRef.current?.focus(); }}
+                      type="button"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <textarea
-                id="prompt-input"
-                ref={composerRef}
-                placeholder="Ask Codex anything..."
-                rows={1}
-                value={composerText}
-                onChange={handleComposerChange}
-                onKeyDown={handleComposerKeyDown}
-              />
             </div>
-            <button id="btn-send" disabled={connectionStatus !== 'connected' || activeSession.isTurnActive} onClick={sendTurn} type="button">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 2L11 13" />
-                <path d="M22 2L15 22L11 13L2 9L22 2Z" />
-              </svg>
-              Send
-            </button>
+          ) : (
+            activeSession.messages.map((message) => (
+              <MessageItem key={message.id} message={message} onToggleReasoning={toggleReasoning} />
+            ))
+          )}
+          <div ref={messagesEndRef} style={{ height: '24px' }} />
+        </div>
+
+        <div id="input-area">
+          <div id="composer-shell">
+            <div id="composer-meta">
+              <span className="meta-pill">Thread composer</span>
+              <span>Enter to send, Shift+Enter for a new line</span>
+            </div>
+            <textarea
+              id="prompt-input"
+              ref={composerRef}
+              placeholder={connectionStatus === 'connected' ? "Ask Codex anything..." : "Connecting to bridge..."}
+              rows={1}
+              value={composerText}
+              onChange={handleComposerChange}
+              onKeyDown={handleComposerKeyDown}
+              disabled={connectionStatus !== 'connected'}
+            />
           </div>
+          <button id="btn-send" disabled={connectionStatus !== 'connected' || activeSession.isTurnActive} onClick={sendTurn} type="button">
+            Send
+          </button>
         </div>
       </div>
 
@@ -1844,5 +1750,7 @@ export default function CodexBridgeApp() {
         </div>
       ) : null}
     </div>
+  );
+}
   );
 }
