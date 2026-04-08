@@ -25,6 +25,10 @@ const PROMPT_SUGGESTIONS = [
 ];
 const RECENT_WORKSPACES_KEY = BRIDGE_STORAGE_KEYS.recentWorkspaces;
 const BRIDGE_SETTINGS_KEY = BRIDGE_STORAGE_KEYS.settings;
+const BRIDGE_SESSION_CACHE_KEY = 'codex-bridge-session-cache-v1';
+const BRIDGE_UI_STATE_KEY = 'codex-bridge-ui-state-v1';
+const MAX_CACHED_MESSAGES = 80;
+const MAX_CACHED_THREADS = 50;
 
 function makeId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
@@ -45,7 +49,42 @@ function createSession(workspace, id = 'default-session') {
     approvalPolicy: 'on-request',
     sandbox: 'workspace-write',
     typing: false,
+    loadedThreadBlocked: false,
+    threadStatus: { label: 'Idle', tone: 'idle' },
   };
+}
+
+function isThreadBlocked(thread) {
+  const threadStatus = thread?.status?.type || thread?.status;
+  if (threadStatus && !['idle', 'done', 'completed'].includes(threadStatus)) {
+    return true;
+  }
+  const turns = thread?.turns || [];
+  const lastTurn = turns[turns.length - 1];
+  const turnStatus = lastTurn?.status?.type || lastTurn?.status;
+  return Boolean(turnStatus && !['done', 'completed'].includes(turnStatus));
+}
+
+function getThreadStatusInfo(thread) {
+  const threadStatus = thread?.status?.type || thread?.status || 'idle';
+  const activeFlags = thread?.status?.activeFlags || [];
+  const turns = thread?.turns || [];
+  const lastTurn = turns[turns.length - 1];
+  const turnStatus = lastTurn?.status?.type || lastTurn?.status || null;
+
+  if (activeFlags.includes('waitingOnApproval')) {
+    return { label: 'Waiting approval', tone: 'running' };
+  }
+  if (threadStatus === 'active') {
+    return { label: turnStatus === 'inProgress' ? 'Running' : 'Active', tone: 'running' };
+  }
+  if (threadStatus === 'completed' || threadStatus === 'done') {
+    return { label: 'Completed', tone: 'done' };
+  }
+  if (threadStatus === 'error' || turnStatus === 'error') {
+    return { label: 'Error', tone: 'error' };
+  }
+  return { label: 'Idle', tone: 'idle' };
 }
 
 function normalizeTimestamp(value) {
@@ -94,6 +133,118 @@ function buildWorkspaceList(current, stored = []) {
       return true;
     })
     .slice(0, 8);
+}
+
+function sanitizeMessagesForCache(messages) {
+  return (messages || []).slice(-MAX_CACHED_MESSAGES).map((message) => ({
+    id: message.id,
+    kind: message.kind,
+    role: message.role,
+    header: message.header,
+    content: message.content,
+    createdAt: message.createdAt,
+    status: message.status,
+    command: message.command,
+    changes: message.changes,
+    tone: message.tone,
+    label: message.label,
+    open: message.open,
+    summary: message.summary,
+  }));
+}
+
+function sanitizeThreadsForCache(threadList) {
+  return (threadList || []).slice(0, MAX_CACHED_THREADS).map((thread) => ({
+    id: thread.id,
+    name: thread.name || null,
+    preview: thread.preview || '',
+    updatedAt: thread.updatedAt || null,
+    createdAt: thread.createdAt || null,
+    status: thread.status || { type: 'idle' },
+    path: thread.path || null,
+    cwd: thread.cwd || null,
+  }));
+}
+
+function sanitizeSessionForCache(session) {
+  if (!session) return null;
+  return {
+    id: session.id,
+    label: session.label,
+    workspace: session.workspace,
+    threadId: session.threadId,
+    currentTurnId: session.currentTurnId,
+    isTurnActive: session.isTurnActive,
+    turnState: session.turnState,
+    messages: sanitizeMessagesForCache(session.messages),
+    threadList: sanitizeThreadsForCache(session.threadList),
+    model: session.model,
+    approvalPolicy: session.approvalPolicy,
+    sandbox: session.sandbox,
+    typing: session.typing,
+    loadedThreadBlocked: session.loadedThreadBlocked,
+    threadStatus: session.threadStatus,
+  };
+}
+
+function restoreCachedSession(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    ...createSession(raw.workspace || DEFAULT_WORKSPACE, raw.id || 'default-session'),
+    label: raw.label || shortWorkspaceLabel(raw.workspace || DEFAULT_WORKSPACE) || 'New thread',
+    threadId: raw.threadId || null,
+    currentTurnId: raw.currentTurnId || null,
+    isTurnActive: Boolean(raw.isTurnActive),
+    turnState: raw.turnState || 'idle',
+    messages: Array.isArray(raw.messages) ? raw.messages : [],
+    threadList: Array.isArray(raw.threadList) ? raw.threadList : [],
+    model: raw.model || '',
+    approvalPolicy: raw.approvalPolicy || 'on-request',
+    sandbox: raw.sandbox || 'workspace-write',
+    typing: Boolean(raw.typing),
+    loadedThreadBlocked: Boolean(raw.loadedThreadBlocked),
+    threadStatus: raw.threadStatus || { label: 'Idle', tone: 'idle' },
+  };
+}
+
+function sanitizeUiState(state) {
+  return {
+    pendingWorkspace: state.pendingWorkspace || DEFAULT_WORKSPACE,
+    sidebarOpen: Boolean(state.sidebarOpen),
+    debugOpen: Boolean(state.debugOpen),
+    workspaceCollapsed: Boolean(state.workspaceCollapsed),
+    sidebarWorkspaceCollapsed: Boolean(state.sidebarWorkspaceCollapsed),
+    threadFilter: state.threadFilter || '',
+  };
+}
+
+function getSuggestedDeviceName() {
+  if (typeof window === 'undefined') return 'My browser';
+  const parts = [];
+  const platform = window.navigator.platform || '';
+  const userAgent = window.navigator.userAgent || '';
+  if (/iphone/i.test(userAgent)) parts.push('iPhone');
+  else if (/ipad/i.test(userAgent)) parts.push('iPad');
+  else if (/android/i.test(userAgent)) parts.push('Android');
+  else if (/mac/i.test(platform)) parts.push('Mac');
+  else if (/win/i.test(platform)) parts.push('Windows');
+  return [...new Set(parts)].join(' · ') || 'My browser';
+}
+
+function withTokenQuery(url, token) {
+  if (!token) return url;
+  const nextUrl = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+  nextUrl.searchParams.set('token', token);
+  return nextUrl.toString();
+}
+
+function normalizeAdminToken(token) {
+  const trimmed = String(token || '').trim();
+  return trimmed && trimmed !== 'changeme' ? trimmed : '';
+}
+
+function shouldUseAdminTokenForRuntime(authState) {
+  return authState?.status !== 'authorized' || authState?.mode !== 'device';
 }
 
 function escapeHtml(text) {
@@ -320,11 +471,16 @@ export default function CodexBridgeApp() {
   const [composerText, setComposerText] = useState('');
   const [modelOptions, setModelOptions] = useState([]);
   const [token, setToken] = useState(DEFAULT_BRIDGE_TOKEN);
+  const [authState, setAuthState] = useState({ status: 'checking', mode: null, device: null, isAdmin: false });
+  const [deviceNameInput, setDeviceNameInput] = useState('My browser');
+  const [adminTokenInput, setAdminTokenInput] = useState('');
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  const [deviceList, setDeviceList] = useState([]);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [workspaceBrowserPath, setWorkspaceBrowserPath] = useState('/');
   const [workspaceBrowserEntries, setWorkspaceBrowserEntries] = useState([]);
   const [pendingWorkspace, setPendingWorkspace] = useState(DEFAULT_WORKSPACE);
-  const [approvalRequest, setApprovalRequest] = useState(null);
+  const [approvalQueue, setApprovalQueue] = useState([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [debugOpen, setDebugOpen] = useState(false);
@@ -350,6 +506,7 @@ export default function CodexBridgeApp() {
   const composerRef = useRef(null);
 
   const activeSession = sessions.find((session) => session.id === activeSessionId) || sessions[0];
+  const approvalRequest = approvalQueue[0] || null;
 
   function pushDebug(label, detail = '') {
     const line = `${new Date().toLocaleTimeString([], {
@@ -397,6 +554,20 @@ export default function CodexBridgeApp() {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(BRIDGE_SESSION_CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const restored = restoreCachedSession(parsed.session);
+      if (!restored) return;
+      setSessions([restored]);
+      setActiveSessionId(restored.id);
+      setPendingWorkspace(restored.workspace || DEFAULT_WORKSPACE);
+      pushDebug('cache restore', `thread=${restored.threadId || 'none'}`);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
     const mediaQuery = window.matchMedia('(max-width: 720px)');
     const syncViewport = (event) => setIsMobileViewport(event.matches);
 
@@ -416,8 +587,15 @@ export default function CodexBridgeApp() {
     const cwd = params.get('cwd') || DEFAULT_WORKSPACE;
     pushDebug('boot params', `token=${nextToken ? 'present' : 'missing'} cwd=${cwd}`);
     setToken(nextToken);
+    setAdminTokenInput(normalizeAdminToken(nextToken));
+    setDeviceNameInput(getSuggestedDeviceName());
     setPendingWorkspace(cwd);
     setSessions((prev) => prev.map((session) => (session.id === activeSessionIdRef.current ? { ...session, workspace: cwd } : session)));
+    if (params.has('token')) {
+      params.delete('token');
+      const nextQuery = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
+    }
   }, []);
 
   useEffect(() => {
@@ -441,6 +619,20 @@ export default function CodexBridgeApp() {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(BRIDGE_UI_STATE_KEY);
+      const parsed = raw ? sanitizeUiState(JSON.parse(raw)) : null;
+      if (!parsed) return;
+      setPendingWorkspace(parsed.pendingWorkspace);
+      setSidebarOpen(parsed.sidebarOpen);
+      setDebugOpen(parsed.debugOpen);
+      setWorkspaceCollapsed(parsed.workspaceCollapsed);
+      setSidebarWorkspaceCollapsed(parsed.sidebarWorkspaceCollapsed);
+      setThreadFilter(parsed.threadFilter);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
     if (!hydrated) return;
     const nextList = buildWorkspaceList(activeSession.workspace, recentWorkspaces);
     setRecentWorkspaces(nextList);
@@ -455,6 +647,38 @@ export default function CodexBridgeApp() {
       window.localStorage.setItem(BRIDGE_SETTINGS_KEY, JSON.stringify(settings));
     } catch {}
   }, [settings, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(
+        BRIDGE_UI_STATE_KEY,
+        JSON.stringify(sanitizeUiState({
+          pendingWorkspace,
+          sidebarOpen,
+          debugOpen,
+          workspaceCollapsed,
+          sidebarWorkspaceCollapsed,
+          threadFilter,
+        })),
+      );
+    } catch {}
+  }, [pendingWorkspace, sidebarOpen, debugOpen, workspaceCollapsed, sidebarWorkspaceCollapsed, threadFilter, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const active = sessions.find((session) => session.id === activeSessionId) || sessions[0];
+    if (!active) return;
+    try {
+      window.localStorage.setItem(
+        BRIDGE_SESSION_CACHE_KEY,
+        JSON.stringify({
+          savedAt: Date.now(),
+          session: sanitizeSessionForCache(active),
+        }),
+      );
+    } catch {}
+  }, [sessions, activeSessionId, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -554,8 +778,77 @@ export default function CodexBridgeApp() {
     return () => document.removeEventListener('keydown', handleEscape);
   }, [settingsOpen]);
 
+  async function fetchBridgeJson(path, options = {}, adminToken = token) {
+    const target = withTokenQuery(buildBridgeUrl(path), normalizeAdminToken(adminToken));
+    const response = await fetch(target, {
+      method: options.method || 'GET',
+      headers: {
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.headers || {}),
+      },
+      body: options.body,
+    });
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {}
+
+    if (!response.ok) {
+      throw new Error(payload?.error || `Request failed: ${response.status}`);
+    }
+    return payload;
+  }
+
+  async function refreshDeviceStatus(adminToken = token) {
+    try {
+      const payload = await fetchBridgeJson('/device-status', {}, '');
+      setAuthState({
+        status: 'authorized',
+        mode: payload.mode,
+        device: payload.device || null,
+        isAdmin: Boolean(payload.isAdmin),
+      });
+      return payload;
+    } catch (error) {
+      setAuthState({ status: 'unauthorized', mode: null, device: null, isAdmin: false });
+      return null;
+    }
+  }
+
+  async function refreshDeviceList(adminToken = token) {
+    const nextToken = normalizeAdminToken(adminToken);
+    if (!nextToken) {
+      setDeviceList([]);
+      return;
+    }
+    try {
+      const payload = await fetchBridgeJson('/devices', {}, nextToken);
+      setDeviceList(payload.devices || []);
+    } catch {
+      setDeviceList([]);
+    }
+  }
+
   useEffect(() => {
-    if (!hydrated || !token) return undefined;
+    if (!hydrated) return undefined;
+
+    let cancelled = false;
+    (async () => {
+      const status = await refreshDeviceStatus(token);
+      if (cancelled) return;
+      if (status?.isAdmin || normalizeAdminToken(token)) {
+        await refreshDeviceList(token);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, token]);
+
+  useEffect(() => {
+    if (!hydrated || authState.status !== 'authorized') return undefined;
 
     let disposed = false;
     pushDebug('transport effect', `start token=${token ? 'present' : 'missing'}`);
@@ -579,7 +872,8 @@ export default function CodexBridgeApp() {
       const generation = ++transportGenerationRef.current;
       pushDebug('transport connect', `generation=${generation}`);
       setConnectionStatus('connecting');
-      const source = new window.EventSource(`${buildBridgeUrl('/codex-events')}?token=${encodeURIComponent(token)}`);
+      const runtimeToken = shouldUseAdminTokenForRuntime(authState) ? normalizeAdminToken(token) : '';
+      const source = new window.EventSource(withTokenQuery(buildBridgeUrl('/codex-events'), runtimeToken));
       eventSourceRef.current = source;
 
       source.onopen = () => {
@@ -703,7 +997,7 @@ export default function CodexBridgeApp() {
       }
       cleanupTransport(eventSourceRef.current);
     };
-  }, [hydrated, token]);
+  }, [hydrated, token, authState.status, authState.mode]);
 
   if (!hydrated) {
     return <div className="bridge-root hydration-shell" />;
@@ -745,6 +1039,20 @@ export default function CodexBridgeApp() {
       ...session,
       messages: [...session.messages, { id: makeId('event'), ...message }],
     }));
+  }
+
+  function buildApprovalResponse(request, allowed) {
+    const params = request?.params || {};
+    const callId = params.callId || params.call_id || params.toolCallId || params.tool_call_id;
+    return {
+      id: request.requestId,
+      // Keep both shapes because Codex approval payloads have changed across surfaces.
+      result: {
+        decision: allowed ? 'accept' : 'decline',
+        approved: allowed,
+        ...(callId ? { callId, call_id: callId } : {}),
+      },
+    };
   }
 
   function appendChatMessage(sessionId, role, content, header = role === 'user' ? 'You' : 'Codex') {
@@ -807,7 +1115,10 @@ export default function CodexBridgeApp() {
       throw new Error('Bridge session not ready');
     }
 
-    const response = await fetch(`${buildBridgeUrl('/codex-rpc')}?token=${encodeURIComponent(token)}&clientId=${encodeURIComponent(clientIdRef.current)}`, {
+    const runtimeToken = shouldUseAdminTokenForRuntime(authState) ? normalizeAdminToken(token) : '';
+    const rpcUrl = new URL(withTokenQuery(buildBridgeUrl('/codex-rpc'), runtimeToken));
+    rpcUrl.searchParams.set('clientId', clientIdRef.current);
+    const response = await fetch(rpcUrl.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -821,7 +1132,7 @@ export default function CodexBridgeApp() {
     }
   }
 
-  function sendRpc(method, params) {
+  function sendRpc(method, params, timeoutMs = 20000) {
     return new Promise((resolve, reject) => {
       const id = nextIdRef.current++;
       const payload = JSON.stringify({ id, method, params });
@@ -829,10 +1140,25 @@ export default function CodexBridgeApp() {
         reject(new Error('Bridge not connected'));
         return;
       }
+      const timeout = window.setTimeout(() => {
+        pendingRequestsRef.current.delete(id);
+        reject(new Error(`RPC timeout: ${method}`));
+      }, timeoutMs);
       pendingRequestsRef.current.set(id, { resolve, reject });
       sendPayload(payload).catch((error) => {
+        window.clearTimeout(timeout);
         pendingRequestsRef.current.delete(id);
         reject(error);
+      });
+      pendingRequestsRef.current.set(id, {
+        resolve: (result) => {
+          window.clearTimeout(timeout);
+          resolve(result);
+        },
+        reject: (error) => {
+          window.clearTimeout(timeout);
+          reject(error);
+        },
       });
     });
   }
@@ -866,7 +1192,15 @@ export default function CodexBridgeApp() {
   async function updateThreadList(workspace = activeSession.workspace) {
     try {
       const result = await sendRpc('thread/list', { limit: 50, cwd: workspace });
-      updateActiveSession((session) => ({ ...session, threadList: result.data || [] }));
+      updateActiveSession((session) => {
+        const nextThreadList = result.data || [];
+        const nextActiveThread = nextThreadList.find((thread) => thread.id === session.threadId);
+        return {
+          ...session,
+          threadList: nextThreadList,
+          threadStatus: nextActiveThread ? getThreadStatusInfo(nextActiveThread) : session.threadStatus,
+        };
+      });
     } catch (error) {
       appendSystemMessage(activeSessionIdRef.current, `Thread list error: ${error.message}`, 'error');
     }
@@ -941,6 +1275,12 @@ export default function CodexBridgeApp() {
       updateActiveSession((session) => ({
         ...session,
         threadId,
+        currentTurnId: null,
+        isTurnActive: false,
+        turnState: 'idle',
+        typing: false,
+        loadedThreadBlocked: isThreadBlocked(thread),
+        threadStatus: getThreadStatusInfo(thread),
         label: thread.name || thread.preview?.slice(0, 28) || session.label,
         messages: [
           {
@@ -949,9 +1289,19 @@ export default function CodexBridgeApp() {
             tone: 'success',
             content: `Loaded: ${thread.name || thread.preview?.slice(0, 50) || threadId.slice(0, 8)}`,
           },
+          ...(isThreadBlocked(thread)
+            ? [{
+                id: makeId('system'),
+                kind: 'system',
+                tone: 'error',
+                content: 'This saved thread still has an unfinished turn. The next message will start a fresh thread to avoid hanging on the old one.',
+              }]
+            : []),
           ...flattenTurnItems(thread.turns || []),
         ],
       }));
+      setApprovalQueue([]);
+      streamRef.current = { agentMessageId: null, reasoningMessageId: null, sessionId: activeSessionIdRef.current };
     } catch (error) {
       appendSystemMessage(activeSessionIdRef.current, `Failed to load history: ${error.message}`, 'error');
     }
@@ -970,13 +1320,116 @@ export default function CodexBridgeApp() {
       ...current,
       threadId: result.thread?.id || current.threadId,
       label: result.thread?.name || current.label,
+      loadedThreadBlocked: false,
+      threadStatus: getThreadStatusInfo(result.thread),
     }));
     return result.thread?.id;
   }
 
+  async function deleteThread(thread) {
+    if (!thread?.id) return;
+    const confirmed = window.confirm(`Delete this session?\n\n${thread.name || thread.preview || thread.id}`);
+    if (!confirmed) return;
+
+    try {
+      const payload = await fetchBridgeJson('/thread-delete', {
+        method: 'POST',
+        body: JSON.stringify({
+          threadId: thread.id,
+          sessionPath: thread.path || null,
+        }),
+      });
+
+      updateActiveSession((session) => {
+        const deletedActiveThread = session.threadId === thread.id;
+        return {
+          ...session,
+          threadList: session.threadList.filter((item) => item.id !== thread.id),
+          threadId: deletedActiveThread ? null : session.threadId,
+          currentTurnId: deletedActiveThread ? null : session.currentTurnId,
+          isTurnActive: deletedActiveThread ? false : session.isTurnActive,
+          turnState: deletedActiveThread ? 'idle' : session.turnState,
+          typing: deletedActiveThread ? false : session.typing,
+          loadedThreadBlocked: deletedActiveThread ? false : session.loadedThreadBlocked,
+          threadStatus: deletedActiveThread ? { label: 'Idle', tone: 'idle' } : session.threadStatus,
+          label: deletedActiveThread ? shortWorkspaceLabel(session.workspace) || 'New thread' : session.label,
+          messages: deletedActiveThread
+            ? [{ id: makeId('system'), kind: 'system', tone: 'success', content: 'Session deleted.' }]
+            : session.messages,
+        };
+      });
+      appendSystemMessage(activeSessionIdRef.current, `Deleted session: ${thread.name || thread.preview || thread.id.slice(0, 8)}`, 'success');
+    } catch (error) {
+      appendSystemMessage(activeSessionIdRef.current, `Delete failed: ${error.message}`, 'error');
+    }
+  }
+
+  async function pairCurrentDevice() {
+    const trimmedToken = adminTokenInput.trim();
+    if (!trimmedToken) {
+      appendSystemMessage(activeSessionIdRef.current, 'Admin token is required to pair a new device.', 'error');
+      return;
+    }
+
+    setDeviceBusy(true);
+    try {
+      await fetchBridgeJson('/device-pair', {
+        method: 'POST',
+        body: JSON.stringify({
+          deviceName: deviceNameInput.trim() || getSuggestedDeviceName(),
+        }),
+      }, trimmedToken);
+      setToken('');
+      await refreshDeviceStatus('');
+      await refreshDeviceList(trimmedToken);
+      appendSystemMessage(activeSessionIdRef.current, 'This browser is now an allowed device.', 'success');
+    } catch (error) {
+      appendSystemMessage(activeSessionIdRef.current, `Device pairing failed: ${error.message}`, 'error');
+    } finally {
+      setDeviceBusy(false);
+    }
+  }
+
+  async function forgetCurrentDevice() {
+    setDeviceBusy(true);
+    try {
+      await fetchBridgeJson('/device-forget', { method: 'POST' }, token);
+      setAuthState({ status: 'unauthorized', mode: null, device: null, isAdmin: false });
+      setConnectionStatus('disconnected');
+      appendSystemMessage(activeSessionIdRef.current, 'This browser has been forgotten.', 'success');
+    } catch (error) {
+      appendSystemMessage(activeSessionIdRef.current, `Forget device failed: ${error.message}`, 'error');
+    } finally {
+      setDeviceBusy(false);
+    }
+  }
+
+  async function revokeDevice(deviceId) {
+    setDeviceBusy(true);
+    try {
+      await fetchBridgeJson('/device-revoke', {
+        method: 'POST',
+        body: JSON.stringify({ deviceId }),
+      }, adminTokenInput.trim());
+      await refreshDeviceList(adminTokenInput.trim());
+      if (authState.device?.id === deviceId) {
+        await refreshDeviceStatus(token);
+      }
+      appendSystemMessage(activeSessionIdRef.current, 'Device revoked.', 'success');
+    } catch (error) {
+      appendSystemMessage(activeSessionIdRef.current, `Revoke failed: ${error.message}`, 'error');
+    } finally {
+      setDeviceBusy(false);
+    }
+  }
+
   async function sendTurn() {
     const text = composerText.trim();
-    if (!text || activeSession.isTurnActive) return;
+    if (!text) return;
+    if (activeSession.isTurnActive) {
+      appendSystemMessage(activeSessionIdRef.current, 'Current turn is still running. Finish or reset it before sending a new message.', 'error');
+      return;
+    }
 
     setComposerText('');
     appendChatMessage(activeSessionIdRef.current, 'user', text);
@@ -986,6 +1439,14 @@ export default function CodexBridgeApp() {
     }));
 
     let threadId = activeSession.threadId;
+    if (activeSession.loadedThreadBlocked) {
+      appendSystemMessage(
+        activeSessionIdRef.current,
+        'Previous thread was still stuck on an unfinished turn. Starting a fresh thread for this follow-up.',
+        'neutral',
+      );
+      threadId = null;
+    }
     if (!threadId) {
       threadId = await startThread();
     }
@@ -1025,9 +1486,21 @@ export default function CodexBridgeApp() {
         ...session,
         threadId: params.thread?.id || session.threadId,
         label: params.thread?.name || params.thread?.preview?.slice(0, 28) || session.label,
+        threadStatus: getThreadStatusInfo(params.thread),
       }));
       appendSystemMessage(sessionId, 'Thread started', 'success');
       updateThreadList();
+      return;
+    }
+
+    if (method === 'thread/status/changed') {
+      updateActiveSession((session) => ({
+        ...session,
+        threadStatus: getThreadStatusInfo({ status: params.status, turns: session.currentTurnId ? [{ status: 'inProgress' }] : [] }),
+        threadList: session.threadList.map((thread) =>
+          thread.id === params.threadId ? { ...thread, status: params.status } : thread,
+        ),
+      }));
       return;
     }
 
@@ -1047,6 +1520,7 @@ export default function CodexBridgeApp() {
         currentTurnId: params.turn?.id,
         isTurnActive: true,
         turnState: 'running',
+        threadStatus: { label: 'Running', tone: 'running' },
       }));
       setTyping(sessionId, true);
       return;
@@ -1059,6 +1533,7 @@ export default function CodexBridgeApp() {
         currentTurnId: null,
         isTurnActive: false,
         turnState: params.turn?.status === 'completed' ? 'done' : 'error',
+        threadStatus: params.turn?.error ? { label: 'Error', tone: 'error' } : { label: 'Completed', tone: 'done' },
       }));
       setTyping(sessionId, false);
       if (params.turn?.error) {
@@ -1135,7 +1610,7 @@ export default function CodexBridgeApp() {
         summary,
       });
       notifyBrowser('Approval needed', summary);
-      setApprovalRequest({ requestId: data.id, params });
+      setApprovalQueue((current) => [...current, { requestId: data.id, params }]);
       return;
     }
 
@@ -1147,17 +1622,20 @@ export default function CodexBridgeApp() {
 
   function respondApproval(allowed) {
     if (!approvalRequest || !clientIdRef.current) {
-      setApprovalRequest(null);
+      setApprovalQueue((current) => current.slice(1));
       return;
     }
 
-    sendPayload(JSON.stringify({
-      id: approvalRequest.requestId,
-      result: { decision: allowed ? 'accept' : 'decline' },
-    })).catch((error) => {
+    const payload = buildApprovalResponse(approvalRequest, allowed);
+    appendSystemMessage(
+      activeSessionIdRef.current,
+      allowed ? 'Approval accepted. Waiting for Codex to continue...' : 'Approval denied.',
+      allowed ? 'neutral' : 'error',
+    );
+    sendPayload(JSON.stringify(payload)).catch((error) => {
       appendSystemMessage(activeSessionIdRef.current, `Approval response failed: ${error.message}`, 'error');
     });
-    setApprovalRequest(null);
+    setApprovalQueue((current) => current.slice(1));
   }
 
   function handleComposerKeyDown(event) {
@@ -1199,10 +1677,26 @@ export default function CodexBridgeApp() {
   });
   const workspaceChoices = buildWorkspaceList(activeSession.workspace, recentWorkspaces);
   const activeThread = activeSession.threadList.find((thread) => thread.id === activeSession.threadId);
+  const sessionStatus = activeThread ? getThreadStatusInfo(activeThread) : activeSession.threadStatus;
   const turnLabel = activeSession.turnState === 'running' ? 'Running' : activeSession.turnState === 'done' ? 'Done' : activeSession.turnState === 'error' ? 'Error' : 'Idle';
   const bridgeLabel = connectionStatus === 'connected' ? 'Bridge on' : connectionStatus === 'connecting' ? 'Bridge connecting' : 'Bridge off';
   const showTurnLabel = activeSession.turnState !== 'idle';
   const { quickCommand: cfQuickCommand, namedCommand: cfNamedCommand } = buildTunnelCommands(settings);
+  const adminTokenReady = Boolean(adminTokenInput.trim());
+  const devicePaired = authState.status === 'authorized' && authState.mode === 'device';
+  const needsPairing = authState.status !== 'checking' && !devicePaired;
+  const deviceMatchLabel = devicePaired
+    ? 'matched'
+    : authState.status === 'authorized'
+      ? 'token only'
+      : authState.status === 'checking'
+        ? 'checking'
+        : 'not matched';
+  const deviceStatusLabel = authState.status === 'authorized'
+    ? authState.device?.name || (authState.mode === 'token' ? 'Admin token session' : 'Allowed device')
+    : authState.status === 'checking'
+      ? 'Checking device...'
+      : 'Device not paired';
   return (
     <div className={`bridge-root${sidebarOpen ? ' sidebar-visible' : ''}${isMobileViewport ? ' mobile-viewport' : ''}`} onClickCapture={handleCopyClick}>
       <div className={`mobile-overlay ${sidebarOpen ? 'active' : ''}`} onClick={() => setSidebarOpen(false)} />
@@ -1244,8 +1738,21 @@ export default function CodexBridgeApp() {
                   >
                     <div className="thread-title">{thread.preview?.slice(0, 40) || thread.name || 'unnamed'}</div>
                     <div className="thread-meta">
-                      <span>{thread.status?.type || 'idle'}</span>
+                      <span>{getThreadStatusInfo(thread).label}</span>
                       <span>{formatDate(thread.updatedAt)}</span>
+                    </div>
+                    <div className="thread-meta">
+                      <button
+                        className="icon-btn"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          deleteThread(thread);
+                        }}
+                        title="Delete Session"
+                        type="button"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
                 ))
@@ -1315,7 +1822,13 @@ export default function CodexBridgeApp() {
           </div>
           <div className="top-bar-actions">
             <span className={`top-meta bridge-flag ${connectionStatus}`}>{bridgeLabel}</span>
+            {devicePaired ? <span className="paired-badge">Paired</span> : null}
+            <span className={`top-meta top-state ${authState.status === 'authorized' ? 'done' : authState.status === 'checking' ? 'running' : 'error'}`}>{deviceStatusLabel}</span>
+            <span className={`top-meta top-state ${sessionStatus.tone}`}>{sessionStatus.label}</span>
             {showTurnLabel ? <span className={`top-meta top-state ${activeSession.turnState}`}>{turnLabel}</span> : null}
+            {activeThread ? (
+              <button className="top-icon" onClick={() => deleteThread(activeThread)} title="Delete Session" type="button">⌫</button>
+            ) : null}
             <button className={`top-icon${debugOpen ? ' active' : ''}`} onClick={() => setDebugOpen((value) => !value)} type="button" title="Debug">⋯</button>
           </div>
         </div>
@@ -1324,22 +1837,55 @@ export default function CodexBridgeApp() {
           {activeSession.messages.length === 0 ? (
             <div className="empty-state">
               <h2>One thread. One input.</h2>
-              <p>History and workspace are in the left panel.</p>
-              <div className="empty-actions">
-                {PROMPT_SUGGESTIONS.slice(0, 2).map((prompt) => (
-                  <button
-                    key={prompt}
-                    className="text-action"
-                    onClick={() => {
-                      setComposerText(prompt);
-                      composerRef.current?.focus();
-                    }}
-                    type="button"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
+              {!needsPairing ? (
+                <>
+                  <p>History and workspace are in the left panel.</p>
+                  <div className="empty-actions">
+                    {PROMPT_SUGGESTIONS.slice(0, 2).map((prompt) => (
+                      <button
+                        key={prompt}
+                        className="text-action"
+                        onClick={() => {
+                          setComposerText(prompt);
+                          composerRef.current?.focus();
+                        }}
+                        type="button"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="auth-panel">
+                  <p>当前只是管理员 token 临时放行。点一次配对，把这台浏览器登记成允许设备，之后就不用再带 token 了。</p>
+                  <div className="setting-group">
+                    <label htmlFor="pair-device-name">Device name</label>
+                    <input
+                      id="pair-device-name"
+                      type="text"
+                      value={deviceNameInput}
+                      onChange={(event) => setDeviceNameInput(event.target.value)}
+                      placeholder="MacBook Safari"
+                    />
+                  </div>
+                  <div className="setting-group">
+                    <label htmlFor="pair-admin-token">Admin token</label>
+                    <input
+                      id="pair-admin-token"
+                      type="text"
+                      value={adminTokenInput}
+                      onChange={(event) => setAdminTokenInput(event.target.value)}
+                      placeholder="Paste once to pair this device"
+                    />
+                  </div>
+                  <div className="empty-actions">
+                    <button className="settings-button" onClick={pairCurrentDevice} disabled={!adminTokenReady || deviceBusy} type="button">
+                      Pair this browser
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             activeSession.messages.map((message) => (
@@ -1461,6 +2007,85 @@ export default function CodexBridgeApp() {
               </button>
             </div>
             <div className="settings-body">
+              <div className="settings-section">
+                <div className="settings-title">设备</div>
+                <div className="auth-panel">
+                  <div className="auth-summary">
+                    <strong>
+                      {devicePaired ? 'Allowed device' : 'Pair required'}
+                      {devicePaired ? <span className="paired-badge inline">Paired</span> : null}
+                    </strong>
+                    <span>
+                      {devicePaired
+                        ? `${authState.device?.name || 'Current browser'} · cookie auth`
+                        : authState.status === 'authorized'
+                          ? `${authState.device?.name || 'Current browser'} · admin token only`
+                          : 'Only paired devices can connect.'}
+                    </span>
+                  </div>
+                  <div className="device-meta-grid">
+                    <div className="device-meta-item">
+                      <span className="device-meta-label">Device</span>
+                      <strong>{authState.device?.name || deviceNameInput || 'Current browser'}</strong>
+                    </div>
+                    <div className="device-meta-item">
+                      <span className="device-meta-label">Match</span>
+                      <strong className={`device-match ${devicePaired ? 'ok' : authState.status === 'authorized' ? 'warn' : 'off'}`}>
+                        {deviceMatchLabel}
+                      </strong>
+                    </div>
+                  </div>
+                  <div className="setting-group">
+                    <label htmlFor="settings-device-name">Device name</label>
+                    <input
+                      id="settings-device-name"
+                      type="text"
+                      value={deviceNameInput}
+                      onChange={(event) => setDeviceNameInput(event.target.value)}
+                      placeholder="MacBook Safari"
+                    />
+                  </div>
+                  <div className="setting-group">
+                    <label htmlFor="settings-admin-token">Admin token</label>
+                    <input
+                      id="settings-admin-token"
+                      type="text"
+                      value={adminTokenInput}
+                      onChange={(event) => setAdminTokenInput(event.target.value)}
+                      placeholder="Needed only for pairing or device management"
+                    />
+                  </div>
+                  <div className="settings-inline-actions">
+                    <button className="settings-button" disabled={!adminTokenReady || deviceBusy} onClick={pairCurrentDevice} type="button">
+                      Pair this browser
+                    </button>
+                    <button className="settings-button" disabled={authState.status !== 'authorized' || deviceBusy} onClick={forgetCurrentDevice} type="button">
+                      Forget this browser
+                    </button>
+                    <button className="settings-button" disabled={!adminTokenReady || deviceBusy} onClick={() => refreshDeviceList(adminTokenInput.trim())} type="button">
+                      Refresh devices
+                    </button>
+                  </div>
+                  {deviceList.length > 0 ? (
+                    <div className="device-list">
+                      {deviceList.map((device) => (
+                        <div className="device-item" key={device.id}>
+                          <div className="device-copy">
+                            <strong>{device.name}</strong>
+                            <span>Last seen {device.lastSeenAt ? formatDate(device.lastSeenAt) : 'never'}</span>
+                          </div>
+                          <button className="settings-button" disabled={deviceBusy} onClick={() => revokeDevice(device.id)} type="button">
+                            Revoke
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="settings-help">Pair one device, then daily access runs on device cookies instead of URL token.</div>
+                  )}
+                </div>
+              </div>
+
               <div className="settings-section">
                 <div className="settings-title">Session Prompt</div>
                 <div className="setting-group">
@@ -1641,7 +2266,7 @@ export default function CodexBridgeApp() {
                 </div>
                 <pre className="settings-code">{cfNamedCommand}</pre>
                 <div className="settings-help">
-                  Config path and tunnel id are reserved for a later managed launch flow.
+                  The tunnel should point at the frontend URL only. Bridge traffic is proxied through this app.
                 </div>
               </div>
             </div>

@@ -409,6 +409,26 @@ button {
   color: var(--text-muted);
 }
 
+.paired-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--ok) 45%, var(--border));
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.paired-badge.inline {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 .top-state.running {
   color: var(--warn);
 }
@@ -1030,6 +1050,90 @@ button.composer-path:hover {
   margin-bottom: 18px;
 }
 
+.auth-panel,
+.auth-summary,
+.device-list,
+.device-copy {
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-panel {
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  border-radius: var(--radius-md);
+}
+
+.auth-summary strong,
+.device-copy strong {
+  font-size: 13px;
+}
+
+.auth-summary span,
+.device-copy span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.device-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.device-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.device-meta-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.device-match.ok {
+  color: var(--ok);
+}
+
+.device-match.warn {
+  color: var(--warn);
+}
+
+.device-match.off {
+  color: var(--danger);
+}
+
+.settings-inline-actions,
+.device-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.device-list {
+  gap: 10px;
+}
+
+.device-item {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.device-item:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
 .capability-list {
   display: flex;
   flex-direction: column;
@@ -1398,5 +1502,15 @@ button.composer-path:hover {
 
   .composer-path {
     font-size: 11px;
+  }
+
+  .settings-inline-actions,
+  .device-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .device-meta-grid {
+    grid-template-columns: 1fr;
   }
 }
