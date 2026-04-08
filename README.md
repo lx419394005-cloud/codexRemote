@@ -32,6 +32,16 @@ npm run build
 BRIDGE_TOKEN=replace-me npm run start:remote
 ```
 
+Global launcher:
+
+```bash
+codexremote start
+codexremote status
+codexremote stop
+```
+
+The global launcher builds first, then starts the production frontend, bridge, and tunnel together.
+
 ## Cloudflare Tunnel
 
 Quick temporary tunnel:
@@ -91,10 +101,12 @@ NEXT_PUBLIC_BRIDGE_URL=http://127.0.0.1:8081
 NEXT_PUBLIC_TUNNEL_URL=http://127.0.0.1:8080
 CF_TUNNEL_MODE=named
 CF_TUNNEL_NAME=codex-bridge
-CF_TUNNEL_DOMAIN=codex.longx.top
+CF_TUNNEL_DOMAIN=codex.example.com
 ALLOWED_DEV_ORIGINS=codex.example.com
 CF_TUNNEL_CONFIG_PATH=~/.cloudflared/config-codex-bridge.yml
 ```
+
+For local-only overrides, put your real values in `codex-bridge/.env.local` or `codex-bridge/.env.remote.local`.
 
 ## Remote access notes
 

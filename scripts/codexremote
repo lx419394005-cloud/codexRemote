@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_PATH" ]; do
+  LINK_TARGET="$(readlink "$SCRIPT_PATH")"
+  if [[ "$LINK_TARGET" = /* ]]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd -P)"
+    SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+STATE_ROOT="${CODEXREMOTE_STATE_DIR:-$HOME/.codex/codexremote}"
+PID_FILE="$STATE_ROOT/codexremote.pid"
+LOG_FILE="$STATE_ROOT/codexremote.log"
+
+mkdir -p "$STATE_ROOT"
+
+read_pid() {
+  if [[ -f "$PID_FILE" ]]; then
+    tr -d '[:space:]' < "$PID_FILE"
+  fi
+}
+
+is_running() {
+  local pid
+  pid="$(read_pid || true)"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+wait_for_ready() {
+  local url="$1"
+  local attempts="${2:-90}"
+  local index
+  for ((index = 0; index < attempts; index += 1)); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+print_urls() {
+  local public_url local_url
+  public_url="$(grep -Eo '\[remote\] Public URL: .*' "$LOG_FILE" | tail -n 1 | sed 's/^\[remote\] Public URL: //' || true)"
+  local_url="$(grep -Eo '\[remote\] Local URL: .*' "$LOG_FILE" | tail -n 1 | sed 's/^\[remote\] Local URL: //' || true)"
+  [[ -n "$local_url" ]] && echo "Local:  $local_url"
+  [[ -n "$public_url" ]] && echo "Public: $public_url"
+  return 0
+}
+
+do_build() {
+  cd "$REPO_ROOT"
+  npm run build
+}
+
+do_start() {
+  if is_running; then
+    echo "codexremote is already running (pid $(read_pid))."
+    print_urls
+    return 0
+  fi
+
+  do_build
+
+  : > "$LOG_FILE"
+  rm -f "$PID_FILE"
+  (
+    cd "$REPO_ROOT"
+    nohup env REMOTE_MODE=production node scripts/start-remote.mjs >>"$LOG_FILE" 2>&1 &
+    echo "$!" > "$PID_FILE"
+  )
+
+  local pid
+  pid="$(read_pid || true)"
+  if [[ -z "$pid" ]]; then
+    echo "codexremote failed to record its supervisor pid."
+    tail -n 40 "$LOG_FILE" || true
+    return 1
+  fi
+
+  echo "Starting codexremote (pid $pid)..."
+  if ! wait_for_ready "http://127.0.0.1:${BRIDGE_PORT:-8081}/ready" 120; then
+    echo "codexremote failed to become ready. Recent logs:"
+    tail -n 40 "$LOG_FILE" || true
+    return 1
+  fi
+
+  echo "codexremote is ready."
+  print_urls
+}
+
+do_stop() {
+  if ! is_running; then
+    rm -f "$PID_FILE"
+    echo "codexremote is not running."
+    return 0
+  fi
+
+  local pid
+  pid="$(read_pid)"
+  kill "$pid"
+
+  local index
+  for ((index = 0; index < 20; index += 1)); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$PID_FILE"
+      echo "codexremote stopped."
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "codexremote did not exit in time; sending SIGKILL."
+  kill -9 "$pid" 2>/dev/null || true
+  rm -f "$PID_FILE"
+}
+
+do_status() {
+  if is_running; then
+    echo "codexremote: running (pid $(read_pid))"
+    if curl -fsS "http://127.0.0.1:${BRIDGE_PORT:-8081}/ready" >/dev/null 2>&1; then
+      echo "bridge: ready"
+    else
+      echo "bridge: not ready"
+    fi
+    print_urls
+  else
+    echo "codexremote: stopped"
+  fi
+}
+
+do_logs() {
+  touch "$LOG_FILE"
+  tail -n 80 -f "$LOG_FILE"
+}
+
+usage() {
+  cat <<'EOF'
+Usage: codexremote [start|stop|restart|status|logs|build]
+
+start    Build and launch the production frontend, bridge, and tunnel
+stop     Stop the running codexremote supervisor
+restart  Stop then start again
+status   Show whether codexremote is running and print current URLs
+logs     Tail the codexremote log file
+build    Run the production Next.js build only
+EOF
+}
+
+case "${1:-start}" in
+  start)
+    do_start
+    ;;
+  stop)
+    do_stop
+    ;;
+  restart)
+    do_stop
+    do_start
+    ;;
+  status)
+    do_status
+    ;;
+  logs)
+    do_logs
+    ;;
+  build)
+    do_build
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
