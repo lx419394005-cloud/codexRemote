@@ -70,6 +70,7 @@ button {
   display: flex;
   height: 100dvh;
   width: 100vw;
+  min-width: 0;
   overflow: hidden;
   background: var(--bg);
 }
@@ -379,12 +380,27 @@ button {
   gap: 2px;
 }
 
+.top-bar-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
 .top-bar-copy strong {
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.top-model-chip {
+  flex: 0 0 auto;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-soft);
+  white-space: nowrap;
 }
 
 .top-bar-copy span,
@@ -937,12 +953,18 @@ button.composer-path:hover {
 #workspace-box {
   width: min(720px, 100%);
   max-height: 85vh;
-  overflow-y: auto;
   padding: 20px;
   border: 1px solid var(--border);
   background: var(--bg);
   border-radius: var(--radius-lg);
   scrollbar-width: none;
+}
+
+#settings-box {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
 }
 
 .modal-content::-webkit-scrollbar,
@@ -963,6 +985,7 @@ button.composer-path:hover {
 }
 
 .modal-head {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -985,6 +1008,18 @@ button.composer-path:hover {
 
 .modal-close:hover {
   background: var(--bg-hover);
+}
+
+.settings-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: none;
+}
+
+.settings-body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .settings-section,
@@ -1034,6 +1069,14 @@ button.composer-path:hover {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 12px;
+}
+
+.settings-actions {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 14px 0 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
 }
 
 #workspace-quick-select,
@@ -1089,29 +1132,105 @@ button.composer-path:hover {
 }
 
 @media (max-width: 900px) {
+  .mobile-overlay.active {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+  }
+
   #sidebar {
-    position: relative;
-    width: 0;
-    flex-basis: 0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 30;
+    width: min(320px, calc(100vw - 56px));
+    flex-basis: auto;
     height: 100dvh;
+    max-width: calc(100vw - 56px);
+    border-right-width: 1px;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    box-shadow: 24px 0 48px rgba(0, 0, 0, 0.24) !important;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
   }
 
   .bridge-root.sidebar-visible #sidebar {
-    width: min(300px, 72vw);
-    flex-basis: min(300px, 72vw);
+    width: min(320px, calc(100vw - 56px));
+    transform: translateX(0);
   }
 
   .mobile-menu-btn {
     display: inline-flex;
   }
 
-  .desktop-menu-btn,
   .mobile-close-btn {
+    display: inline-flex;
+  }
+
+  .desktop-menu-btn {
     display: none;
+  }
+
+  .bridge-root.mobile-viewport #sidebar {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
 @media (max-width: 720px) {
+  .bridge-root {
+    height: 100svh;
+  }
+
+  #top-bar {
+    height: auto;
+    min-height: 56px;
+    padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .top-bar-main,
+  .top-bar-actions {
+    min-width: 0;
+  }
+
+  .top-bar-main {
+    flex: 1;
+    align-items: flex-start;
+  }
+
+  .top-bar-copy strong {
+    font-size: 13px;
+  }
+
+  .top-bar-title-row {
+    gap: 4px;
+  }
+
+  .top-bar-copy span {
+    font-size: 10px;
+  }
+
+  .top-model-chip {
+    font-size: 9px;
+  }
+
+  .top-bar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .top-bar-actions .bridge-flag {
+    display: inline;
+  }
+
   .message-row,
   .reasoning-row,
   .event-line,
@@ -1122,30 +1241,162 @@ button.composer-path:hover {
     padding-right: 16px;
   }
 
+  .message-row {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+
+  .message-row.user .message-inner,
+  .message-row.assistant .message-inner {
+    max-width: 100%;
+  }
+
+  .msg-header,
+  .message-header {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .msg-role {
+    font-size: 11px;
+  }
+
+  .msg-time {
+    font-size: 10px;
+  }
+
+  .msg-content {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .msg-content pre,
+  .event-body,
+  .settings-code,
+  #approval-box pre {
+    padding: 10px;
+    font-size: 11px;
+  }
+
+  .empty-state {
+    padding-top: 32px;
+    padding-bottom: 32px;
+  }
+
+  .empty-state h2 {
+    font-size: 18px;
+  }
+
+  .empty-actions {
+    flex-direction: column;
+  }
+
+  .empty-actions > * {
+    width: 100%;
+  }
+
   #input-area {
-    padding: 12px 16px 16px;
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  #composer-shell {
+    position: relative;
   }
 
   #composer-meta {
-    flex-direction: column;
-    align-items: stretch;
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    display: flex;
+    justify-content: flex-end;
+    padding: 0;
+    border-top: none;
+    background: transparent;
+    pointer-events: none;
   }
 
   .composer-controls,
   .composer-actions {
-    width: 100%;
+    width: auto;
   }
 
   .composer-controls {
-    flex-wrap: wrap;
+    display: none;
   }
 
   .composer-actions {
-    justify-content: space-between;
+    justify-content: flex-end;
+    gap: 0;
+    pointer-events: auto;
   }
 
   #composer-meta,
   .top-bar-actions {
     font-size: 10px;
+  }
+
+  #prompt-input {
+    min-height: 72px;
+    padding: 10px 56px 12px 12px;
+    font-size: 16px;
+  }
+
+  #btn-send {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 999px;
+    font-size: 0;
+    position: relative;
+  }
+
+  #btn-send::before {
+    content: "↑";
+    font-size: 16px;
+    line-height: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .bridge-root.sidebar-visible #sidebar {
+    width: calc(100vw - 32px);
+  }
+
+  #top-bar {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .message-row,
+  .reasoning-row,
+  .event-line,
+  .system-line,
+  .debug-panel,
+  .empty-state {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  #input-area {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  #composer-shell {
+    border-radius: 10px;
+  }
+
+  .composer-actions {
+    justify-content: flex-end;
+  }
+
+  .composer-actions span {
+    display: none;
+  }
+
+  .composer-path {
+    font-size: 11px;
   }
 }

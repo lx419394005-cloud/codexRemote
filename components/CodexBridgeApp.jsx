@@ -312,6 +312,7 @@ function MessageItem({ message, onToggleReasoning }) {
 export default function CodexBridgeApp() {
   const initialSession = useRef(createSession(DEFAULT_WORKSPACE)).current;
   const [hydrated, setHydrated] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [debugEvents, setDebugEvents] = useState([]);
   const [sessions, setSessions] = useState([initialSession]);
   const [activeSessionId, setActiveSessionId] = useState(initialSession.id);
@@ -341,6 +342,7 @@ export default function CodexBridgeApp() {
   const reconnectTimerRef = useRef(null);
   const connectDelayRef = useRef(null);
   const transportGenerationRef = useRef(0);
+  const viewportModeRef = useRef(null);
   const activeSessionIdRef = useRef(activeSessionId);
   const sessionsRef = useRef(sessions);
   const streamRef = useRef({ agentMessageId: null, reasoningMessageId: null, sessionId: activeSessionId });
@@ -392,6 +394,20 @@ export default function CodexBridgeApp() {
   useEffect(() => {
     setHydrated(true);
     pushDebug('hydrate', 'client mounted');
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 720px)');
+    const syncViewport = (event) => setIsMobileViewport(event.matches);
+
+    setIsMobileViewport(mediaQuery.matches);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncViewport);
+      return () => mediaQuery.removeEventListener('change', syncViewport);
+    }
+
+    mediaQuery.addListener(syncViewport);
+    return () => mediaQuery.removeListener(syncViewport);
   }, []);
 
   useEffect(() => {
@@ -477,6 +493,22 @@ export default function CodexBridgeApp() {
     window.addEventListener('marked-ready', handleMarkedReady);
   return () => window.removeEventListener('marked-ready', handleMarkedReady);
   }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (viewportModeRef.current === isMobileViewport) return;
+
+    viewportModeRef.current = isMobileViewport;
+    if (isMobileViewport) {
+      setSidebarOpen(false);
+      setWorkspaceCollapsed(false);
+      setDebugOpen(false);
+      return;
+    }
+
+    setSidebarOpen(true);
+    setWorkspaceCollapsed(false);
+  }, [hydrated, isMobileViewport]);
 
   useEffect(() => {
     const logVisibility = () => pushDebug('document visibility', document.visibilityState);
@@ -1169,15 +1201,16 @@ export default function CodexBridgeApp() {
   const activeThread = activeSession.threadList.find((thread) => thread.id === activeSession.threadId);
   const turnLabel = activeSession.turnState === 'running' ? 'Running' : activeSession.turnState === 'done' ? 'Done' : activeSession.turnState === 'error' ? 'Error' : 'Idle';
   const bridgeLabel = connectionStatus === 'connected' ? 'Bridge on' : connectionStatus === 'connecting' ? 'Bridge connecting' : 'Bridge off';
+  const showTurnLabel = activeSession.turnState !== 'idle';
   const { quickCommand: cfQuickCommand, namedCommand: cfNamedCommand } = buildTunnelCommands(settings);
   return (
-    <div className={`bridge-root${sidebarOpen ? ' sidebar-visible' : ''}`} onClickCapture={handleCopyClick}>
+    <div className={`bridge-root${sidebarOpen ? ' sidebar-visible' : ''}${isMobileViewport ? ' mobile-viewport' : ''}`} onClickCapture={handleCopyClick}>
       <div className={`mobile-overlay ${sidebarOpen ? 'active' : ''}`} onClick={() => setSidebarOpen(false)} />
 
       <div id="sidebar" className={sidebarOpen ? 'open' : ''}>
         <div className="sidebar-header">
           <div className="logo">History</div>
-          <button className="mobile-close-btn" onClick={() => setSidebarOpen(false)} type="button">×</button>
+          <button aria-label="Close history" className="mobile-close-btn" onClick={() => setSidebarOpen(false)} type="button">×</button>
         </div>
 
         <div className="sidebar-scrollable">
@@ -1206,7 +1239,7 @@ export default function CodexBridgeApp() {
                     className={`thread-item${thread.id === activeSession.threadId ? ' active' : ''}`}
                     onClick={() => {
                       loadThreadHistory(thread.id);
-                      if (window.innerWidth <= 768) setSidebarOpen(false);
+                      if (isMobileViewport) setSidebarOpen(false);
                     }}
                   >
                     <div className="thread-title">{thread.preview?.slice(0, 40) || thread.name || 'unnamed'}</div>
@@ -1270,16 +1303,19 @@ export default function CodexBridgeApp() {
       <div id="chat-area">
         <div id="top-bar">
           <div className="top-bar-main">
-            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} type="button">☰</button>
-            <button className="desktop-menu-btn" onClick={() => setSidebarOpen((value) => !value)} type="button">≡</button>
+            <button aria-label="Open history" className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} type="button">☰</button>
+            <button aria-label="Toggle history" className="desktop-menu-btn" onClick={() => setSidebarOpen((value) => !value)} type="button">≡</button>
             <div className="top-bar-copy">
-              <strong>{activeThread?.name || activeThread?.preview?.slice(0, 44) || 'New thread'}</strong>
+              <div className="top-bar-title-row">
+                <strong>{activeThread?.name || activeThread?.preview?.slice(0, 44) || 'New thread'}</strong>
+                <span className="top-model-chip">{modelBadge}</span>
+              </div>
               <span>{shortWorkspaceLabel(activeSession.workspace)}</span>
             </div>
           </div>
           <div className="top-bar-actions">
             <span className={`top-meta bridge-flag ${connectionStatus}`}>{bridgeLabel}</span>
-            <span className={`top-meta top-state ${activeSession.turnState}`}>{turnLabel}</span>
+            {showTurnLabel ? <span className={`top-meta top-state ${activeSession.turnState}`}>{turnLabel}</span> : null}
             <button className={`top-icon${debugOpen ? ' active' : ''}`} onClick={() => setDebugOpen((value) => !value)} type="button" title="Debug">⋯</button>
           </div>
         </div>
@@ -1424,191 +1460,193 @@ export default function CodexBridgeApp() {
                 ×
               </button>
             </div>
-            <div className="settings-section">
-              <div className="settings-title">Session Prompt</div>
-              <div className="setting-group">
-                <label htmlFor="session-developer-instructions">Developer Instructions</label>
-                <textarea
-                  id="session-developer-instructions"
-                  className="settings-textarea"
-                  onChange={(event) => setSettings((current) => ({ ...current, sessionDeveloperInstructions: event.target.value }))}
-                  placeholder="Inject custom session instructions at the developer/system layer for new threads."
-                  rows={6}
-                  value={settings.sessionDeveloperInstructions}
-                />
+            <div className="settings-body">
+              <div className="settings-section">
+                <div className="settings-title">Session Prompt</div>
+                <div className="setting-group">
+                  <label htmlFor="session-developer-instructions">Developer Instructions</label>
+                  <textarea
+                    id="session-developer-instructions"
+                    className="settings-textarea"
+                    onChange={(event) => setSettings((current) => ({ ...current, sessionDeveloperInstructions: event.target.value }))}
+                    placeholder="Inject custom session instructions at the developer/system layer for new threads."
+                    rows={6}
+                    value={settings.sessionDeveloperInstructions}
+                  />
+                </div>
+                <div className="settings-help">
+                  Applied as <code>developerInstructions</code> when a new thread starts. Existing threads keep their current instructions.
+                </div>
               </div>
-              <div className="settings-help">
-                Applied as <code>developerInstructions</code> when a new thread starts. Existing threads keep their current instructions.
-              </div>
-            </div>
 
-            <div className="settings-section">
-              <div className="settings-title">Runtime</div>
-              <div className="setting-group">
-                <label htmlFor="settings-model-select">Model</label>
-                <select
-                  id="settings-model-select"
-                  value={activeSession.model}
-                  onChange={(event) => updateActiveSession((session) => ({ ...session, model: event.target.value }))}
-                >
-                  {(modelOptions.length ? modelOptions : [{ name: 'gpt-4o-codex', displayName: 'gpt-4o-codex' }]).map((model) => (
-                    <option key={model.name || model.id} value={model.name || model.id}>
-                      {model.displayName || model.name || model.id}
-                    </option>
-                  ))}
-                </select>
+              <div className="settings-section">
+                <div className="settings-title">Runtime</div>
+                <div className="setting-group">
+                  <label htmlFor="settings-model-select">Model</label>
+                  <select
+                    id="settings-model-select"
+                    value={activeSession.model}
+                    onChange={(event) => updateActiveSession((session) => ({ ...session, model: event.target.value }))}
+                  >
+                    {(modelOptions.length ? modelOptions : [{ name: 'gpt-4o-codex', displayName: 'gpt-4o-codex' }]).map((model) => (
+                      <option key={model.name || model.id} value={model.name || model.id}>
+                        {model.displayName || model.name || model.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="setting-group">
+                  <label htmlFor="settings-sandbox-select">Sandbox</label>
+                  <select
+                    id="settings-sandbox-select"
+                    value={activeSession.sandbox}
+                    onChange={(event) => updateActiveSession((session) => ({ ...session, sandbox: event.target.value }))}
+                  >
+                    <option value="workspace-write">workspace-write</option>
+                    <option value="read-only">read-only</option>
+                    <option value="danger-full-access">danger-full-access</option>
+                  </select>
+                </div>
+                <div className="setting-group">
+                  <label htmlFor="settings-approval-select">Approval</label>
+                  <select
+                    id="settings-approval-select"
+                    value={activeSession.approvalPolicy}
+                    onChange={(event) => updateActiveSession((session) => ({ ...session, approvalPolicy: event.target.value }))}
+                  >
+                    <option value="on-request">on-request</option>
+                    <option value="untrusted">untrusted</option>
+                    <option value="never">never</option>
+                  </select>
+                </div>
               </div>
-              <div className="setting-group">
-                <label htmlFor="settings-sandbox-select">Sandbox</label>
-                <select
-                  id="settings-sandbox-select"
-                  value={activeSession.sandbox}
-                  onChange={(event) => updateActiveSession((session) => ({ ...session, sandbox: event.target.value }))}
-                >
-                  <option value="workspace-write">workspace-write</option>
-                  <option value="read-only">read-only</option>
-                  <option value="danger-full-access">danger-full-access</option>
-                </select>
-              </div>
-              <div className="setting-group">
-                <label htmlFor="settings-approval-select">Approval</label>
-                <select
-                  id="settings-approval-select"
-                  value={activeSession.approvalPolicy}
-                  onChange={(event) => updateActiveSession((session) => ({ ...session, approvalPolicy: event.target.value }))}
-                >
-                  <option value="on-request">on-request</option>
-                  <option value="untrusted">untrusted</option>
-                  <option value="never">never</option>
-                </select>
-              </div>
-            </div>
 
-            <div className="settings-section">
-              <div className="settings-title">Environment Capabilities</div>
-              <div className="capability-list">
-                <div className="capability-item">
-                  <span className={`capability-dot ${capabilities.codexRpc.available ? 'ok' : 'off'}`} />
-                  <div className="capability-copy">
-                    <strong>Codex RPC</strong>
-                    <span>{capabilities.codexRpc.transport || 'Unavailable'} {capabilities.codexRpc.target ? `· ${capabilities.codexRpc.target}` : ''}</span>
+              <div className="settings-section">
+                <div className="settings-title">Environment Capabilities</div>
+                <div className="capability-list">
+                  <div className="capability-item">
+                    <span className={`capability-dot ${capabilities.codexRpc.available ? 'ok' : 'off'}`} />
+                    <div className="capability-copy">
+                      <strong>Codex RPC</strong>
+                      <span>{capabilities.codexRpc.transport || 'Unavailable'} {capabilities.codexRpc.target ? `· ${capabilities.codexRpc.target}` : ''}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="capability-item">
-                  <span className={`capability-dot ${capabilities.screenshot.available ? 'ok' : 'off'}`} />
-                  <div className="capability-copy">
-                    <strong>Screenshot</strong>
-                    <span>{capabilities.screenshot.available ? capabilities.screenshot.path : 'screencapture not found'}</span>
+                  <div className="capability-item">
+                    <span className={`capability-dot ${capabilities.screenshot.available ? 'ok' : 'off'}`} />
+                    <div className="capability-copy">
+                      <strong>Screenshot</strong>
+                      <span>{capabilities.screenshot.available ? capabilities.screenshot.path : 'screencapture not found'}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="capability-item">
-                  <span className={`capability-dot ${capabilities.playwright.available ? 'ok' : 'off'}`} />
-                  <div className="capability-copy">
-                    <strong>Playwright</strong>
-                    <span>{capabilities.playwright.available ? capabilities.playwright.path : 'playwright not found'}</span>
+                  <div className="capability-item">
+                    <span className={`capability-dot ${capabilities.playwright.available ? 'ok' : 'off'}`} />
+                    <div className="capability-copy">
+                      <strong>Playwright</strong>
+                      <span>{capabilities.playwright.available ? capabilities.playwright.path : 'playwright not found'}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="capability-item">
-                  <span className={`capability-dot ${capabilities.cloudflared.available ? 'ok' : 'off'}`} />
-                  <div className="capability-copy">
-                    <strong>Cloudflare Tunnel</strong>
-                    <span>{capabilities.cloudflared.available ? capabilities.cloudflared.path : 'cloudflared not found'}</span>
+                  <div className="capability-item">
+                    <span className={`capability-dot ${capabilities.cloudflared.available ? 'ok' : 'off'}`} />
+                    <div className="capability-copy">
+                      <strong>Cloudflare Tunnel</strong>
+                      <span>{capabilities.cloudflared.available ? capabilities.cloudflared.path : 'cloudflared not found'}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="capability-item">
-                  <span className={`capability-dot ${capabilities.git.available ? 'ok' : 'off'}`} />
-                  <div className="capability-copy">
-                    <strong>Git</strong>
-                    <span>{capabilities.git.available ? capabilities.git.path : 'git not found'}</span>
+                  <div className="capability-item">
+                    <span className={`capability-dot ${capabilities.git.available ? 'ok' : 'off'}`} />
+                    <div className="capability-copy">
+                      <strong>Git</strong>
+                      <span>{capabilities.git.available ? capabilities.git.path : 'git not found'}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="settings-section">
-              <div className="settings-title">Permissions</div>
-              <label className="settings-toggle">
+              <div className="settings-section">
+                <div className="settings-title">Permissions</div>
+                <label className="settings-toggle">
+                  <input
+                    checked={settings.autoApproveAll}
+                    onChange={(event) => setSettings((current) => ({ ...current, autoApproveAll: event.target.checked }))}
+                    type="checkbox"
+                  />
+                  <span>All Accept</span>
+                </label>
+                <div className="settings-help">
+                  Automatically approves incoming permission requests in this browser thread view.
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <div className="settings-title">Browser Hooks</div>
+                <label className="settings-toggle">
+                  <input
+                    checked={settings.browserNotifications}
+                    onChange={(event) => setSettings((current) => ({ ...current, browserNotifications: event.target.checked }))}
+                    type="checkbox"
+                  />
+                  <span>Browser Notifications</span>
+                </label>
+                <div className="settings-help">
+                  Sends local browser notifications for approval prompts, turn completion, and bridge errors.
+                </div>
+                <button className="header-action settings-button" onClick={enableBrowserNotifications} type="button">
+                  Request Notification Permission
+                </button>
+              </div>
+
+              <div className="settings-section">
+                <div className="settings-title">Cloudflare Tunnel</div>
                 <input
-                  checked={settings.autoApproveAll}
-                  onChange={(event) => setSettings((current) => ({ ...current, autoApproveAll: event.target.checked }))}
-                  type="checkbox"
+                  className="settings-input"
+                  onChange={(event) => setSettings((current) => ({ ...current, cfTunnelName: event.target.value }))}
+                  placeholder="Tunnel name"
+                  type="text"
+                  value={settings.cfTunnelName}
                 />
-                <span>All Accept</span>
-              </label>
-              <div className="settings-help">
-                Automatically approves incoming permission requests in this browser thread view.
-              </div>
-            </div>
-
-            <div className="settings-section">
-              <div className="settings-title">Browser Hooks</div>
-              <label className="settings-toggle">
                 <input
-                  checked={settings.browserNotifications}
-                  onChange={(event) => setSettings((current) => ({ ...current, browserNotifications: event.target.checked }))}
-                  type="checkbox"
+                  className="settings-input"
+                  onChange={(event) => setSettings((current) => ({ ...current, cfTunnelDomain: event.target.value }))}
+                  placeholder="Hostname, e.g. codex.example.com"
+                  type="text"
+                  value={settings.cfTunnelDomain}
                 />
-                <span>Browser Notifications</span>
-              </label>
-              <div className="settings-help">
-                Sends local browser notifications for approval prompts, turn completion, and bridge errors.
-              </div>
-              <button className="header-action settings-button" onClick={enableBrowserNotifications} type="button">
-                Request Notification Permission
-              </button>
-            </div>
-
-            <div className="settings-section">
-              <div className="settings-title">Cloudflare Tunnel</div>
-              <input
-                className="settings-input"
-                onChange={(event) => setSettings((current) => ({ ...current, cfTunnelName: event.target.value }))}
-                placeholder="Tunnel name"
-                type="text"
-                value={settings.cfTunnelName}
-              />
-              <input
-                className="settings-input"
-                onChange={(event) => setSettings((current) => ({ ...current, cfTunnelDomain: event.target.value }))}
-                placeholder="Hostname, e.g. codex.example.com"
-                type="text"
-                value={settings.cfTunnelDomain}
-              />
-              <input
-                className="settings-input"
-                onChange={(event) => setSettings((current) => ({ ...current, cfTunnelUrl: event.target.value }))}
-                placeholder="Local URL"
-                type="text"
-                value={settings.cfTunnelUrl}
-              />
-              <input
-                className="settings-input"
-                onChange={(event) => setSettings((current) => ({ ...current, cfTunnelConfigPath: event.target.value }))}
-                placeholder="cloudflared config path"
-                type="text"
-                value={settings.cfTunnelConfigPath}
-              />
-              <input
-                className="settings-input"
-                onChange={(event) => setSettings((current) => ({ ...current, cfTunnelId: event.target.value }))}
-                placeholder="Tunnel ID (reserved)"
-                type="text"
-                value={settings.cfTunnelId}
-              />
-              <div className="settings-help">
-                Quick tunnel:
-              </div>
-              <pre className="settings-code">{cfQuickCommand}</pre>
-              <div className="settings-help">
-                Named tunnel:
-              </div>
-              <pre className="settings-code">{cfNamedCommand}</pre>
-              <div className="settings-help">
-                Config path and tunnel id are reserved for a later managed launch flow.
+                <input
+                  className="settings-input"
+                  onChange={(event) => setSettings((current) => ({ ...current, cfTunnelUrl: event.target.value }))}
+                  placeholder="Local URL"
+                  type="text"
+                  value={settings.cfTunnelUrl}
+                />
+                <input
+                  className="settings-input"
+                  onChange={(event) => setSettings((current) => ({ ...current, cfTunnelConfigPath: event.target.value }))}
+                  placeholder="cloudflared config path"
+                  type="text"
+                  value={settings.cfTunnelConfigPath}
+                />
+                <input
+                  className="settings-input"
+                  onChange={(event) => setSettings((current) => ({ ...current, cfTunnelId: event.target.value }))}
+                  placeholder="Tunnel ID (reserved)"
+                  type="text"
+                  value={settings.cfTunnelId}
+                />
+                <div className="settings-help">
+                  Quick tunnel:
+                </div>
+                <pre className="settings-code">{cfQuickCommand}</pre>
+                <div className="settings-help">
+                  Named tunnel:
+                </div>
+                <pre className="settings-code">{cfNamedCommand}</pre>
+                <div className="settings-help">
+                  Config path and tunnel id are reserved for a later managed launch flow.
+                </div>
               </div>
             </div>
 
-            <div className="actions">
+            <div className="actions settings-actions">
               <button className="allow" onClick={() => setSettingsOpen(false)} type="button">
                 Done
               </button>
