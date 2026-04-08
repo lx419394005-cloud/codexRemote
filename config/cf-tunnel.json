@@ -1,7 +1,0 @@
-{
-  "defaultName": "codex-bridge",
-  "defaultFrontendPort": 8080,
-  "defaultConfigPath": "~/.cloudflared/config.yml",
-  "defaultTunnelId": "",
-  "defaultDomain": ""
-}

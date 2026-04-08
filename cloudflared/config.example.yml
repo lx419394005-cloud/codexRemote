@@ -1,0 +1,7 @@
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /Users/your-user/.cloudflared/YOUR_TUNNEL_ID.json
+
+ingress:
+  - hostname: codex.example.com
+    service: http://127.0.0.1:8080
+  - service: http_status:404
