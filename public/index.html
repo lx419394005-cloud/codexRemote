@@ -688,7 +688,7 @@ let nextId = 1;
 let currentThreadId = null;
 let currentTurnId = null;
 let pendingRequests = new Map();
-let pendingApproval = null;
+let pendingApprovals = [];
 let agentMessageEl = null;
 let agentMessageBuffer = '';
 let reasoningEl = null;
@@ -1610,20 +1610,39 @@ document.addEventListener('click', async (event) => {
 });
 
 function handleApprovalRequest(requestId, params) {
-  pendingApproval = { requestId, params };
+  pendingApprovals.push({ requestId, params });
   const content = document.getElementById('approval-content');
-  content.textContent = JSON.stringify(params, null, 2);
+  content.textContent = JSON.stringify(pendingApprovals[0].params, null, 2);
   document.getElementById('approval-modal').classList.add('show');
+}
+
+function buildApprovalResponse(request, allowed) {
+  const params = request?.params || {};
+  const callId = params.callId || params.call_id || params.toolCallId || params.tool_call_id;
+  return {
+    id: request.requestId,
+    result: {
+      decision: allowed ? 'accept' : 'decline',
+      approved: allowed,
+      ...(callId ? { callId, call_id: callId } : {}),
+    }
+  };
 }
 
 function respondApproval(allowed) {
   document.getElementById('approval-modal').classList.remove('show');
-  if (!pendingApproval) return;
-  const { requestId } = pendingApproval;
-  pendingApproval = null;
-  const decision = allowed ? 'accept' : 'decline';
+  const currentApproval = pendingApprovals[0];
+  if (!currentApproval) return;
+  const payload = buildApprovalResponse(currentApproval, allowed);
+  pendingApprovals.shift();
+  addSystemMessage(allowed ? 'Approval accepted. Waiting for Codex to continue...' : 'Approval denied.', allowed ? undefined : 'error');
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ id: requestId, result: { decision } }));
+    ws.send(JSON.stringify(payload));
+  }
+  if (pendingApprovals[0]) {
+    const content = document.getElementById('approval-content');
+    content.textContent = JSON.stringify(pendingApprovals[0].params, null, 2);
+    document.getElementById('approval-modal').classList.add('show');
   }
 }
 
@@ -1647,6 +1666,10 @@ async function startThread() {
 }
 
 async function sendTurn(text) {
+  if (isTurnActive) {
+    addSystemMessage('Current turn is still running. Finish or reset it before sending a new message.', 'error');
+    return;
+  }
   if (!currentThreadId) {
     currentThreadId = await startThread();
     if (!currentThreadId) return;

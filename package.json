@@ -6,9 +6,14 @@
   "scripts": {
     "dev": "next dev --webpack --hostname 0.0.0.0 --port ${FRONTEND_PORT:-8080}",
     "dev:bridge": "NODE_ENV=development BRIDGE_PORT=${BRIDGE_PORT:-8081} node bridge.js",
+    "dev:remote": "node scripts/start-remote.mjs",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0 --port ${FRONTEND_PORT:-8080}",
-    "start:bridge": "NODE_ENV=production BRIDGE_PORT=${BRIDGE_PORT:-8081} node bridge.js"
+    "start:bridge": "NODE_ENV=production BRIDGE_PORT=${BRIDGE_PORT:-8081} node bridge.js",
+    "start:remote": "REMOTE_MODE=production node scripts/start-remote.mjs",
+    "tunnel:setup:domain": "node scripts/setup-cf-domain.mjs",
+    "tunnel:quick": "cloudflared tunnel --url ${NEXT_PUBLIC_TUNNEL_URL:-http://127.0.0.1:${FRONTEND_PORT:-8080}}",
+    "tunnel:named": "cloudflared tunnel --config ${CF_TUNNEL_CONFIG_PATH:-$HOME/.cloudflared/config-codex-bridge.yml} run ${CF_TUNNEL_NAME:-codex-bridge}"
   },
   "dependencies": {
     "http-proxy": "^1.18.1",

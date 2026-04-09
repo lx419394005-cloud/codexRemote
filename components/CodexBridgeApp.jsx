@@ -502,6 +502,8 @@ export default function CodexBridgeApp() {
   const activeSessionIdRef = useRef(activeSessionId);
   const sessionsRef = useRef(sessions);
   const streamRef = useRef({ agentMessageId: null, reasoningMessageId: null, sessionId: activeSessionId });
+  const connectionStatusRef = useRef(connectionStatus);
+  const autoRefreshRef = useRef({ inFlight: false, lastKey: '', lastAt: 0 });
   const messagesEndRef = useRef(null);
   const composerRef = useRef(null);
 
@@ -547,6 +549,10 @@ export default function CodexBridgeApp() {
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
+
+  useEffect(() => {
+    connectionStatusRef.current = connectionStatus;
+  }, [connectionStatus]);
 
   useEffect(() => {
     setHydrated(true);
@@ -935,9 +941,10 @@ export default function CodexBridgeApp() {
             pushDebug('rpc fs/readDirectory', currentSession?.workspace || DEFAULT_WORKSPACE);
             await loadWorkspace(currentSession?.workspace || DEFAULT_WORKSPACE);
             pushDebug('rpc fs/readDirectory', 'ok');
-            pushDebug('rpc thread/list', 'request');
+            pushDebug('rpc thread/sync', 'request');
+            await refreshActiveThreadSnapshot('transport-connected', { force: true });
             await updateThreadList(currentSession?.workspace || DEFAULT_WORKSPACE);
-            pushDebug('rpc thread/list', 'ok');
+            pushDebug('rpc thread/sync', 'ok');
           } catch (error) {
             pushDebug('rpc init pipeline', `error=${error.message}`);
             appendSystemMessage(activeSessionIdRef.current, `Init error: ${error.message}`, 'error');
@@ -999,6 +1006,39 @@ export default function CodexBridgeApp() {
     };
   }, [hydrated, token, authState.status, authState.mode]);
 
+  useEffect(() => {
+    if (!hydrated) return undefined;
+
+    const maybeRefresh = (reason) => {
+      if (document.visibilityState !== 'visible') return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      refreshActiveThreadSnapshot(reason);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        maybeRefresh('visibility');
+      }
+    };
+    const handleFocus = () => maybeRefresh('focus');
+    const handleOnline = () => maybeRefresh('online');
+    const handlePageShow = (event) => {
+      maybeRefresh(event.persisted ? 'pageshow-persisted' : 'pageshow');
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('pageshow', handlePageShow);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, [hydrated]);
+
   if (!hydrated) {
     return <div className="bridge-root hydration-shell" />;
   }
@@ -1011,6 +1051,73 @@ export default function CodexBridgeApp() {
     setSessions((prev) =>
       prev.map((session) => (session.id === sessionId ? updater(session) : session)),
     );
+  }
+
+  function applyThreadSnapshot(session, thread, threadId, { silent = false } = {}) {
+    return {
+      ...session,
+      threadId,
+      currentTurnId: null,
+      isTurnActive: false,
+      turnState: 'idle',
+      typing: false,
+      loadedThreadBlocked: isThreadBlocked(thread),
+      threadStatus: getThreadStatusInfo(thread),
+      label: thread.name || thread.preview?.slice(0, 28) || session.label,
+      messages: [
+        ...(silent
+          ? []
+          : [{
+              id: makeId('system'),
+              kind: 'system',
+              tone: 'success',
+              content: `Loaded: ${thread.name || thread.preview?.slice(0, 50) || threadId.slice(0, 8)}`,
+            }]),
+        ...(isThreadBlocked(thread) && !silent
+          ? [{
+              id: makeId('system'),
+              kind: 'system',
+              tone: 'error',
+              content: 'This saved thread still has an unfinished turn. The next message will start a fresh thread to avoid hanging on the old one.',
+            }]
+          : []),
+        ...flattenTurnItems(thread.turns || []),
+      ],
+    };
+  }
+
+  async function refreshActiveThreadSnapshot(reason = 'manual', { force = false } = {}) {
+    const currentSession = sessionsRef.current.find((session) => session.id === activeSessionIdRef.current);
+    if (!currentSession?.threadId) return;
+    if (connectionStatusRef.current !== 'connected' || !clientIdRef.current) return;
+
+    const now = Date.now();
+    if (!force) {
+      const recentMatch = autoRefreshRef.current.lastKey === reason && now - autoRefreshRef.current.lastAt < 1500;
+      if (autoRefreshRef.current.inFlight || recentMatch) return;
+    }
+
+    autoRefreshRef.current = { inFlight: true, lastKey: reason, lastAt: now };
+    pushDebug('thread auto-refresh', `${reason} :: ${currentSession.threadId}`);
+
+    try {
+      await updateThreadList(currentSession.workspace);
+      const result = await sendRpc('thread/read', { threadId: currentSession.threadId, includeTurns: true });
+      const thread = result.thread;
+      if (!thread) return;
+
+      updateSession(currentSession.id, (session) => applyThreadSnapshot(session, thread, currentSession.threadId, { silent: true }));
+      setApprovalQueue([]);
+      streamRef.current = { agentMessageId: null, reasoningMessageId: null, sessionId: activeSessionIdRef.current };
+    } catch (error) {
+      pushDebug('thread auto-refresh error', `${reason} :: ${error.message}`);
+    } finally {
+      autoRefreshRef.current = {
+        inFlight: false,
+        lastKey: reason,
+        lastAt: Date.now(),
+      };
+    }
   }
 
   async function resetCurrentThread() {
@@ -1272,34 +1379,7 @@ export default function CodexBridgeApp() {
         return;
       }
 
-      updateActiveSession((session) => ({
-        ...session,
-        threadId,
-        currentTurnId: null,
-        isTurnActive: false,
-        turnState: 'idle',
-        typing: false,
-        loadedThreadBlocked: isThreadBlocked(thread),
-        threadStatus: getThreadStatusInfo(thread),
-        label: thread.name || thread.preview?.slice(0, 28) || session.label,
-        messages: [
-          {
-            id: makeId('system'),
-            kind: 'system',
-            tone: 'success',
-            content: `Loaded: ${thread.name || thread.preview?.slice(0, 50) || threadId.slice(0, 8)}`,
-          },
-          ...(isThreadBlocked(thread)
-            ? [{
-                id: makeId('system'),
-                kind: 'system',
-                tone: 'error',
-                content: 'This saved thread still has an unfinished turn. The next message will start a fresh thread to avoid hanging on the old one.',
-              }]
-            : []),
-          ...flattenTurnItems(thread.turns || []),
-        ],
-      }));
+      updateActiveSession((session) => applyThreadSnapshot(session, thread, threadId));
       setApprovalQueue([]);
       streamRef.current = { agentMessageId: null, reasoningMessageId: null, sessionId: activeSessionIdRef.current };
     } catch (error) {
@@ -1736,14 +1816,9 @@ export default function CodexBridgeApp() {
                       if (isMobileViewport) setSidebarOpen(false);
                     }}
                   >
-                    <div className="thread-title">{thread.preview?.slice(0, 40) || thread.name || 'unnamed'}</div>
-                    <div className="thread-meta">
-                      <span>{getThreadStatusInfo(thread).label}</span>
-                      <span>{formatDate(thread.updatedAt)}</span>
-                    </div>
-                    <div className="thread-meta">
+                    <div className="thread-actions">
                       <button
-                        className="icon-btn"
+                        className="thread-delete-btn"
                         onClick={(event) => {
                           event.stopPropagation();
                           deleteThread(thread);
@@ -1751,8 +1826,13 @@ export default function CodexBridgeApp() {
                         title="Delete Session"
                         type="button"
                       >
-                        Delete
+                        ×
                       </button>
+                    </div>
+                    <div className="thread-title">{thread.preview?.slice(0, 40) || thread.name || 'unnamed'}</div>
+                    <div className="thread-meta">
+                      <span>{getThreadStatusInfo(thread).label}</span>
+                      <span>{formatDate(thread.updatedAt)}</span>
                     </div>
                   </div>
                 ))
@@ -1821,13 +1901,15 @@ export default function CodexBridgeApp() {
             </div>
           </div>
           <div className="top-bar-actions">
-            <span className={`top-meta bridge-flag ${connectionStatus}`}>{bridgeLabel}</span>
-            {devicePaired ? <span className="paired-badge">Paired</span> : null}
-            <span className={`top-meta top-state ${authState.status === 'authorized' ? 'done' : authState.status === 'checking' ? 'running' : 'error'}`}>{deviceStatusLabel}</span>
-            <span className={`top-meta top-state ${sessionStatus.tone}`}>{sessionStatus.label}</span>
-            {showTurnLabel ? <span className={`top-meta top-state ${activeSession.turnState}`}>{turnLabel}</span> : null}
+            <div className="top-status-group">
+              <span className={`top-meta bridge-flag ${connectionStatus}`}>{bridgeLabel}</span>
+              {devicePaired ? <span className="paired-badge">Paired</span> : null}
+              <span className={`top-meta top-state ${authState.status === 'authorized' ? 'done' : authState.status === 'checking' ? 'running' : 'error'}`}>{deviceStatusLabel}</span>
+              <span className={`top-meta top-state ${sessionStatus.tone}`}>{sessionStatus.label}</span>
+              {showTurnLabel ? <span className={`top-meta top-state ${activeSession.turnState}`}>{turnLabel}</span> : null}
+            </div>
             {activeThread ? (
-              <button className="top-icon" onClick={() => deleteThread(activeThread)} title="Delete Session" type="button">⌫</button>
+              <button className="top-icon top-delete" onClick={() => deleteThread(activeThread)} title="Delete Session" type="button">×</button>
             ) : null}
             <button className={`top-icon${debugOpen ? ' active' : ''}`} onClick={() => setDebugOpen((value) => !value)} type="button" title="Debug">⋯</button>
           </div>

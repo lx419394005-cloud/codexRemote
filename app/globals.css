@@ -284,6 +284,7 @@ button {
 }
 
 .thread-item {
+  position: relative;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
@@ -295,10 +296,44 @@ button {
 }
 
 .thread-title {
+  padding-right: 28px;
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.thread-actions {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.thread-item:hover .thread-actions,
+.thread-item.active .thread-actions {
+  opacity: 1;
+}
+
+.thread-delete-btn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--text-soft);
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.thread-delete-btn:hover {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 36%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 .thread-meta,
@@ -373,6 +408,11 @@ button {
   min-width: 0;
 }
 
+.top-bar-actions {
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .top-bar-copy {
   min-width: 0;
   display: flex;
@@ -409,6 +449,17 @@ button {
   color: var(--text-muted);
 }
 
+.top-status-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-panel) 82%, transparent);
+}
+
 .paired-badge {
   display: inline-flex;
   align-items: center;
@@ -427,6 +478,18 @@ button {
 .paired-badge.inline {
   margin-left: 8px;
   vertical-align: middle;
+}
+
+.top-meta {
+  white-space: nowrap;
+}
+
+.top-delete {
+  color: var(--text-soft);
+}
+
+.top-delete:hover {
+  color: var(--danger);
 }
 
 .top-state.running {
@@ -1258,7 +1321,7 @@ button.composer-path:hover {
     border-right-width: 1px;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
-    box-shadow: 24px 0 48px rgba(0, 0, 0, 0.24) !important;
+    box-shadow: none !important;
     transform: translateX(-100%);
     transition: transform 0.18s ease;
   }
@@ -1266,6 +1329,7 @@ button.composer-path:hover {
   .bridge-root.sidebar-visible #sidebar {
     width: min(320px, calc(100vw - 56px));
     transform: translateX(0);
+    box-shadow: 24px 0 48px rgba(0, 0, 0, 0.24) !important;
   }
 
   .mobile-menu-btn {
@@ -1331,8 +1395,9 @@ button.composer-path:hover {
     gap: 6px;
   }
 
-  .top-bar-actions .bridge-flag {
-    display: inline;
+  .top-status-group {
+    gap: 4px;
+    padding: 3px 6px;
   }
 
   .message-row,

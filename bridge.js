@@ -11,6 +11,8 @@ const LOG_PATH = process.env.BRIDGE_DEBUG_LOG
   || path.join(process.env.HOME || '/tmp', '.codex', 'log', 'codex-bridge-debug.log');
 const DEVICE_STORE_PATH = process.env.BRIDGE_DEVICE_STORE_PATH
   || path.join(process.env.HOME || '/tmp', '.codex', 'codex-bridge-devices.json');
+const THREAD_BINDING_STORE_PATH = process.env.BRIDGE_THREAD_BINDING_STORE_PATH
+  || path.join(process.env.HOME || '/tmp', '.codex', 'codex-bridge-thread-bindings.json');
 const DEVICE_ID_COOKIE = 'codex_bridge_device_id';
 const DEVICE_SECRET_COOKIE = 'codex_bridge_device_secret';
 const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -44,6 +46,15 @@ function ensureDeviceStore() {
   } catch {}
 }
 
+function ensureThreadBindingStore() {
+  try {
+    fs.mkdirSync(path.dirname(THREAD_BINDING_STORE_PATH), { recursive: true });
+    if (!fs.existsSync(THREAD_BINDING_STORE_PATH)) {
+      fs.writeFileSync(THREAD_BINDING_STORE_PATH, JSON.stringify({ version: 1, bindings: [] }, null, 2));
+    }
+  } catch {}
+}
+
 function loadDeviceStore() {
   ensureDeviceStore();
   try {
@@ -63,6 +74,31 @@ function saveDeviceStore(store) {
   fs.writeFileSync(DEVICE_STORE_PATH, JSON.stringify({
     version: 1,
     devices: Array.isArray(store?.devices) ? store.devices : [],
+  }, null, 2));
+}
+
+function loadThreadBindingStore() {
+  ensureThreadBindingStore();
+  try {
+    const raw = fs.readFileSync(THREAD_BINDING_STORE_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.bindings)) {
+      return { version: 1, bindings: [] };
+    }
+    return {
+      version: 1,
+      bindings: parsed.bindings.filter((binding) => binding && typeof binding === 'object'),
+    };
+  } catch {
+    return { version: 1, bindings: [] };
+  }
+}
+
+function saveThreadBindingStore(store) {
+  ensureThreadBindingStore();
+  fs.writeFileSync(THREAD_BINDING_STORE_PATH, JSON.stringify({
+    version: 1,
+    bindings: Array.isArray(store?.bindings) ? store.bindings : [],
   }, null, 2));
 }
 
@@ -110,6 +146,102 @@ function sanitizeDeviceName(value) {
     .trim()
     .slice(0, 80);
   return normalized || 'Unnamed device';
+}
+
+function sanitizeThreadIdentifier(value, label) {
+  const normalized = String(value || '').trim().slice(0, 200);
+  if (!normalized) {
+    throw new Error(`${label} is required`);
+  }
+  return normalized;
+}
+
+function sanitizeOptionalString(value, maxLength = 400) {
+  const normalized = String(value || '').trim();
+  return normalized ? normalized.slice(0, maxLength) : null;
+}
+
+function sanitizeBindingMetadata(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const next = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!key) continue;
+    if (['string', 'number', 'boolean'].includes(typeof entry)) {
+      next[key.slice(0, 80)] = entry;
+    }
+  }
+  return Object.keys(next).length ? next : null;
+}
+
+function sanitizeThreadBinding(binding) {
+  if (!binding) return null;
+  return {
+    externalThreadId: binding.externalThreadId,
+    threadId: binding.threadId,
+    cwd: binding.cwd || null,
+    source: binding.source || null,
+    metadata: binding.metadata || null,
+    createdAt: binding.createdAt || null,
+    updatedAt: binding.updatedAt || null,
+  };
+}
+
+function findThreadBinding(store, { externalThreadId, threadId }) {
+  return (store?.bindings || []).find((binding) => (
+    (externalThreadId && binding.externalThreadId === externalThreadId)
+    || (threadId && binding.threadId === threadId)
+  )) || null;
+}
+
+function upsertThreadBinding(store, payload) {
+  const now = new Date().toISOString();
+  const externalThreadId = sanitizeThreadIdentifier(payload.externalThreadId, 'externalThreadId');
+  const threadId = sanitizeThreadIdentifier(payload.threadId, 'threadId');
+  const cwd = sanitizeOptionalString(payload.cwd, 1000);
+  const source = sanitizeOptionalString(payload.source, 120);
+  const metadata = sanitizeBindingMetadata(payload.metadata);
+
+  const existing = findThreadBinding(store, { externalThreadId, threadId });
+  if (existing) {
+    existing.externalThreadId = externalThreadId;
+    existing.threadId = threadId;
+    existing.cwd = cwd;
+    existing.source = source;
+    existing.metadata = metadata;
+    existing.updatedAt = now;
+    if (!existing.createdAt) existing.createdAt = now;
+    return existing;
+  }
+
+  const binding = {
+    externalThreadId,
+    threadId,
+    cwd,
+    source,
+    metadata,
+    createdAt: now,
+    updatedAt: now,
+  };
+  store.bindings.push(binding);
+  return binding;
+}
+
+function findTurnById(thread, turnId) {
+  return (thread?.turns || []).find((turn) => turn?.id === turnId) || null;
+}
+
+function normalizeTurnStatus(turn) {
+  return turn?.status?.type || turn?.status || null;
+}
+
+function isTerminalTurnStatus(status) {
+  return ['completed', 'done', 'error', 'failed', 'cancelled', 'canceled'].includes(String(status || '').toLowerCase());
+}
+
+async function delay(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getAdminToken(url, req) {
@@ -289,6 +421,185 @@ function readRequestBody(req) {
   });
 }
 
+async function createCodexRpcSession(options = {}) {
+  const timeoutMs = Math.max(1000, Math.min(parseInt(options.timeoutMs, 10) || 20000, 120000));
+  const ws = new WebSocket(CONFIG.CODEX_WS, {
+    perMessageDeflate: false,
+  });
+
+  let closed = false;
+  let nextId = 1;
+  const pending = new Map();
+
+  function finalizePending(error) {
+    for (const request of pending.values()) {
+      clearTimeout(request.timeout);
+      request.reject(error);
+    }
+    pending.clear();
+  }
+
+  function close(reason = 'done') {
+    if (closed) return;
+    closed = true;
+    finalizePending(new Error(`Codex RPC session closed: ${reason}`));
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.close();
+    }
+  }
+
+  function send(payload) {
+    if (closed || ws.readyState !== WebSocket.OPEN) {
+      throw new Error('Codex RPC session is not open');
+    }
+    ws.send(JSON.stringify(payload));
+  }
+
+  function request(method, params, requestTimeoutMs = timeoutMs) {
+    return new Promise((resolve, reject) => {
+      if (closed) {
+        reject(new Error('Codex RPC session is closed'));
+        return;
+      }
+
+      const id = nextId++;
+      const timeout = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`RPC timeout: ${method}`));
+      }, requestTimeoutMs);
+
+      pending.set(id, {
+        resolve: (result) => {
+          clearTimeout(timeout);
+          resolve(result);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+        timeout,
+      });
+
+      try {
+        send({ id, method, params });
+      } catch (error) {
+        clearTimeout(timeout);
+        pending.delete(id);
+        reject(error);
+      }
+    });
+  }
+
+  ws.on('message', (data) => {
+    let parsed;
+    try {
+      parsed = JSON.parse(data.toString());
+    } catch {
+      return;
+    }
+
+    if (parsed.id !== undefined && pending.has(parsed.id)) {
+      const handler = pending.get(parsed.id);
+      pending.delete(parsed.id);
+      if (parsed.error) {
+        handler.reject(new Error(parsed.error.message || JSON.stringify(parsed.error)));
+      } else {
+        handler.resolve(parsed.result);
+      }
+    }
+  });
+
+  const opened = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      close('connect-timeout');
+      reject(new Error('Timed out connecting to Codex app-server'));
+    }, timeoutMs);
+
+    ws.once('open', () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+
+    ws.once('error', (error) => {
+      clearTimeout(timer);
+      close('open-error');
+      reject(error);
+    });
+
+    ws.once('close', (code, reason) => {
+      clearTimeout(timer);
+      close(`open-close:${code}:${String(reason || '')}`);
+      reject(new Error(`Codex app-server closed before initialize (${code})`));
+    });
+  });
+
+  if (!opened) {
+    throw new Error('Failed to open Codex RPC session');
+  }
+
+  ws.on('error', (error) => {
+    writeDebugLog('rpc.session.error', { message: error.message });
+    close(`error:${error.message}`);
+  });
+
+  ws.on('close', (code, reason) => {
+    close(`close:${code}:${String(reason || '')}`);
+  });
+
+  await request('initialize', {
+    clientInfo: {
+      name: 'codex_bridge_http',
+      title: 'Codex Bridge HTTP API',
+      version: '1.0.0',
+    },
+  }, timeoutMs);
+
+  send({ method: 'initialized', params: {} });
+
+  return {
+    request,
+    close,
+  };
+}
+
+async function withCodexRpcSession(fn, options = {}) {
+  const session = await createCodexRpcSession(options);
+  try {
+    return await fn(session);
+  } finally {
+    session.close('finished');
+  }
+}
+
+async function fetchThreadSnapshot(threadId, options = {}) {
+  return withCodexRpcSession(async (session) => {
+    const result = await session.request('thread/read', { threadId, includeTurns: true }, options.timeoutMs);
+    return result.thread || null;
+  }, options);
+}
+
+async function waitForTurnCompletion(threadId, turnId, options = {}) {
+  const timeoutMs = Math.max(2000, Math.min(parseInt(options.timeoutMs, 10) || 90000, 300000));
+  const pollIntervalMs = Math.max(250, Math.min(parseInt(options.pollIntervalMs, 10) || 1200, 10000));
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const thread = await fetchThreadSnapshot(threadId, { timeoutMs: options.timeoutMs });
+    const turn = findTurnById(thread, turnId);
+    const status = normalizeTurnStatus(turn);
+
+    if (turn && isTerminalTurnStatus(status)) {
+      return { thread, turn, completed: true, timedOut: false };
+    }
+
+    await delay(pollIntervalMs);
+  }
+
+  const thread = await fetchThreadSnapshot(threadId, { timeoutMs: options.timeoutMs });
+  const turn = findTurnById(thread, turnId);
+  return { thread, turn, completed: false, timedOut: true };
+}
+
 function sendSse(res, event, payload) {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -433,6 +744,7 @@ function createClient(res) {
 async function main() {
   ensureLogFile();
   ensureDeviceStore();
+  ensureThreadBindingStore();
   writeDebugLog('bridge.start', { port: CONFIG.PORT, codexWs: CONFIG.CODEX_WS });
   const server = http.createServer();
 
@@ -464,6 +776,221 @@ async function main() {
 
     if (url.pathname === '/ready') {
       writeJson(res, 200, { status: 'ready' });
+      return;
+    }
+
+    if (url.pathname === '/thread-bind' && req.method === 'POST') {
+      const auth = authenticateRequest(req, url);
+      if (!auth.ok) {
+        writeJson(res, auth.status, { error: auth.error });
+        return;
+      }
+
+      try {
+        const body = await readRequestBody(req);
+        const payload = body ? JSON.parse(body) : {};
+        const threadId = sanitizeThreadIdentifier(payload.threadId, 'threadId');
+        const externalThreadId = sanitizeThreadIdentifier(payload.externalThreadId, 'externalThreadId');
+
+        const thread = await fetchThreadSnapshot(threadId, { timeoutMs: 20000 });
+        if (!thread) {
+          writeJson(res, 404, { error: 'Thread not found' });
+          return;
+        }
+
+        const store = loadThreadBindingStore();
+        const binding = upsertThreadBinding(store, {
+          externalThreadId,
+          threadId,
+          cwd: payload.cwd || thread.cwd || null,
+          source: payload.source,
+          metadata: payload.metadata,
+        });
+        saveThreadBindingStore(store);
+        writeDebugLog('thread.bind.ok', { externalThreadId, threadId });
+        writeJson(res, 200, {
+          ok: true,
+          binding: sanitizeThreadBinding(binding),
+          thread: {
+            id: thread.id,
+            name: thread.name || null,
+            preview: thread.preview || null,
+            cwd: thread.cwd || null,
+            updatedAt: thread.updatedAt || null,
+          },
+        });
+      } catch (error) {
+        writeDebugLog('thread.bind.error', { message: error.message });
+        writeJson(res, 500, { error: error.message });
+      }
+      return;
+    }
+
+    if (url.pathname === '/thread-resolve' && req.method === 'GET') {
+      const auth = authenticateRequest(req, url);
+      if (!auth.ok) {
+        writeJson(res, auth.status, { error: auth.error });
+        return;
+      }
+
+      try {
+        const externalThreadId = sanitizeOptionalString(url.searchParams.get('externalThreadId'), 200);
+        const threadId = sanitizeOptionalString(url.searchParams.get('threadId'), 200);
+        if (!externalThreadId && !threadId) {
+          writeJson(res, 400, { error: 'externalThreadId or threadId is required' });
+          return;
+        }
+
+        const store = loadThreadBindingStore();
+        const binding = findThreadBinding(store, { externalThreadId, threadId });
+        if (!binding) {
+          writeJson(res, 404, { error: 'Thread binding not found' });
+          return;
+        }
+
+        const thread = await fetchThreadSnapshot(binding.threadId, { timeoutMs: 20000 });
+        if (!thread) {
+          writeJson(res, 404, { error: 'Bound thread no longer exists' });
+          return;
+        }
+
+        writeJson(res, 200, {
+          ok: true,
+          binding: sanitizeThreadBinding(binding),
+          thread: {
+            id: thread.id,
+            name: thread.name || null,
+            preview: thread.preview || null,
+            cwd: thread.cwd || null,
+            updatedAt: thread.updatedAt || null,
+            createdAt: thread.createdAt || null,
+            status: thread.status || null,
+          },
+        });
+      } catch (error) {
+        writeDebugLog('thread.resolve.error', { message: error.message });
+        writeJson(res, 500, { error: error.message });
+      }
+      return;
+    }
+
+    if (url.pathname === '/thread-history' && req.method === 'GET') {
+      const auth = authenticateRequest(req, url);
+      if (!auth.ok) {
+        writeJson(res, auth.status, { error: auth.error });
+        return;
+      }
+
+      try {
+        const externalThreadId = sanitizeOptionalString(url.searchParams.get('externalThreadId'), 200);
+        let threadId = sanitizeOptionalString(url.searchParams.get('threadId'), 200);
+
+        if (!threadId && externalThreadId) {
+          const store = loadThreadBindingStore();
+          threadId = findThreadBinding(store, { externalThreadId })?.threadId || null;
+        }
+
+        if (!threadId) {
+          writeJson(res, 400, { error: 'threadId or externalThreadId is required' });
+          return;
+        }
+
+        const thread = await fetchThreadSnapshot(threadId, { timeoutMs: 20000 });
+        if (!thread) {
+          writeJson(res, 404, { error: 'Thread not found' });
+          return;
+        }
+
+        writeJson(res, 200, { ok: true, thread });
+      } catch (error) {
+        writeDebugLog('thread.history.error', { message: error.message });
+        writeJson(res, 500, { error: error.message });
+      }
+      return;
+    }
+
+    if (url.pathname === '/thread-send' && req.method === 'POST') {
+      const auth = authenticateRequest(req, url);
+      if (!auth.ok) {
+        writeJson(res, auth.status, { error: auth.error });
+        return;
+      }
+
+      try {
+        const body = await readRequestBody(req);
+        const payload = body ? JSON.parse(body) : {};
+        const text = String(payload.text || '').trim();
+        const externalThreadId = sanitizeOptionalString(payload.externalThreadId, 200);
+        let threadId = sanitizeOptionalString(payload.threadId, 200);
+
+        if (!text) {
+          writeJson(res, 400, { error: 'text is required' });
+          return;
+        }
+
+        let binding = null;
+        if (!threadId && externalThreadId) {
+          const store = loadThreadBindingStore();
+          binding = findThreadBinding(store, { externalThreadId });
+          threadId = binding?.threadId || null;
+        }
+
+        if (!threadId) {
+          writeJson(res, 400, { error: 'threadId or an existing externalThreadId binding is required' });
+          return;
+        }
+
+        const waitForCompletion = payload.waitForCompletion !== false;
+        const rpcTimeoutMs = Math.max(1000, Math.min(parseInt(payload.rpcTimeoutMs, 10) || 20000, 120000));
+
+        const turnResult = await withCodexRpcSession(async (session) => (
+          session.request('turn/start', {
+            threadId,
+            input: [{ type: 'text', text }],
+          }, rpcTimeoutMs)
+        ), { timeoutMs: rpcTimeoutMs });
+
+        if (!binding && externalThreadId) {
+          const store = loadThreadBindingStore();
+          binding = upsertThreadBinding(store, {
+            externalThreadId,
+            threadId,
+            cwd: payload.cwd,
+            source: payload.source,
+            metadata: payload.metadata,
+          });
+          saveThreadBindingStore(store);
+        }
+
+        const turnId = turnResult?.turn?.id || null;
+        let waitResult = null;
+        if (waitForCompletion && turnId) {
+          waitResult = await waitForTurnCompletion(threadId, turnId, {
+            timeoutMs: payload.timeoutMs,
+            pollIntervalMs: payload.pollIntervalMs,
+            rpcTimeoutMs,
+          });
+        }
+
+        writeDebugLog('thread.send.ok', {
+          threadId,
+          externalThreadId,
+          turnId,
+          waitForCompletion,
+        });
+        writeJson(res, 200, {
+          ok: true,
+          binding: sanitizeThreadBinding(binding),
+          threadId,
+          turn: waitResult?.turn || turnResult?.turn || null,
+          completed: waitResult ? waitResult.completed : false,
+          timedOut: waitResult ? waitResult.timedOut : false,
+          thread: waitResult?.thread || null,
+        });
+      } catch (error) {
+        writeDebugLog('thread.send.error', { message: error.message });
+        writeJson(res, 500, { error: error.message });
+      }
       return;
     }
 
@@ -710,7 +1237,18 @@ async function main() {
 
     writeJson(res, 404, {
       error: 'Not found',
-      availablePaths: ['/health', '/ready', '/capabilities', CONFIG.EVENTS_PATH, CONFIG.RPC_PATH],
+      availablePaths: [
+        '/health',
+        '/ready',
+        '/capabilities',
+        '/thread-bind',
+        '/thread-resolve',
+        '/thread-history',
+        '/thread-send',
+        '/thread-delete',
+        CONFIG.EVENTS_PATH,
+        CONFIG.RPC_PATH,
+      ],
     });
   });
 
