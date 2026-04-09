@@ -1354,7 +1354,7 @@ function connect() {
 
     try {
       await sendRpc('initialize', {
-        clientInfo: { name: 'codex_bridge_web', title: 'Codex Bridge Web UI', version: '1.0.0' }
+        clientInfo: { name: 'codexremote_web', title: 'codexRemote Web UI', version: '1.0.0' }
       });
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ method: 'initialized' }));

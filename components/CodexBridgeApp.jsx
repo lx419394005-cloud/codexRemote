@@ -25,8 +25,8 @@ const PROMPT_SUGGESTIONS = [
 ];
 const RECENT_WORKSPACES_KEY = BRIDGE_STORAGE_KEYS.recentWorkspaces;
 const BRIDGE_SETTINGS_KEY = BRIDGE_STORAGE_KEYS.settings;
-const BRIDGE_SESSION_CACHE_KEY = 'codex-bridge-session-cache-v1';
-const BRIDGE_UI_STATE_KEY = 'codex-bridge-ui-state-v1';
+const BRIDGE_SESSION_CACHE_KEY = 'codexremote-session-cache-v1';
+const BRIDGE_UI_STATE_KEY = 'codexremote-ui-state-v1';
 const MAX_CACHED_MESSAGES = 80;
 const MAX_CACHED_THREADS = 50;
 
@@ -529,7 +529,7 @@ export default function CodexBridgeApp() {
     try {
       const notification = new Notification(title, {
         body,
-        tag: 'codex-bridge',
+        tag: 'codexremote',
       });
       window.setTimeout(() => notification.close(), 5000);
     } catch {}
@@ -915,7 +915,7 @@ export default function CodexBridgeApp() {
           try {
             pushDebug('rpc initialize', 'request');
             await sendRpc('initialize', {
-              clientInfo: { name: 'codex_bridge_next', title: 'Codex Bridge Next UI', version: '2.0.0' },
+              clientInfo: { name: 'codexremote_next', title: 'codexRemote Next UI', version: '2.0.0' },
             });
             pushDebug('rpc initialize', 'ok');
             await sendNotification('initialized');
@@ -1364,7 +1364,7 @@ export default function CodexBridgeApp() {
     if (permission === 'granted') {
       setSettings((current) => ({ ...current, browserNotifications: true }));
       appendSystemMessage(activeSessionIdRef.current, 'Browser notifications enabled.', 'success');
-      notifyBrowser('Codex Bridge', 'Notifications are enabled.');
+      notifyBrowser('codexRemote', 'Notifications are enabled.');
       return;
     }
     appendSystemMessage(activeSessionIdRef.current, `Notification permission: ${permission}`, 'error');

@@ -1,4 +1,4 @@
-# Codex Bridge
+# codexRemote
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -6,9 +6,9 @@
 [![Cloudflare Tunnel](https://img.shields.io/badge/Cloudflare-Tunnel-F38020?logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
 [![Local First](https://img.shields.io/badge/Local-First-0F172A)](#)
 
-Codex Bridge lets you access your local Codex environment from any device through the web. It uses a small Node bridge, a Next.js frontend, and Cloudflare Tunnel to expose a single public HTTPS entrypoint, so you can reach the same local workspace, files, and Codex sessions remotely while keeping sessions and threads fully synchronized with the desktop side.
+codexRemote lets you access your local Codex environment from any device through the web. It uses a small Node bridge, a Next.js frontend, and Cloudflare Tunnel to expose a single public HTTPS entrypoint, so you can reach the same local workspace, files, and Codex sessions remotely while keeping sessions and threads fully synchronized with the desktop side.
 
-Codex Bridge 让你可以通过 Web 从任何设备访问你的本地 Codex 环境。它通过轻量 Node bridge、Next.js 前端和 Cloudflare Tunnel 暴露一个统一的公网 HTTPS 入口，让你在远端访问同一套本地工作区、文件和 Codex 会话，同时保证 session 和 thread 与桌面端完全同步。
+codexRemote 让你可以通过 Web 从任何设备访问你的本地 Codex 环境。它通过轻量 Node bridge、Next.js 前端和 Cloudflare Tunnel 暴露一个统一的公网 HTTPS 入口，让你在远端访问同一套本地工作区、文件和 Codex 会话，同时保证 session 和 thread 与桌面端完全同步。
 
 Here, "local environment" means the exact environment your desktop Codex is already using: workspace, files, thread history, session state, and bridge-mediated runtime access.
 
@@ -156,10 +156,10 @@ BRIDGE_PORT=8081
 NEXT_PUBLIC_BRIDGE_URL=http://127.0.0.1:8081
 NEXT_PUBLIC_TUNNEL_URL=http://127.0.0.1:8080
 CF_TUNNEL_MODE=named
-CF_TUNNEL_NAME=codex-bridge
+CF_TUNNEL_NAME=codexremote
 CF_TUNNEL_DOMAIN=codex.example.com
 ALLOWED_DEV_ORIGINS=codex.example.com
-CF_TUNNEL_CONFIG_PATH=~/.cloudflared/config-codex-bridge.yml
+CF_TUNNEL_CONFIG_PATH=~/.cloudflared/config-codexremote.yml
 ```
 
 Keep local secrets in `.env.local` or `.env.remote.local`.
@@ -171,7 +171,7 @@ Keep local secrets in `.env.local` or `.env.remote.local`.
 Bindings are stored at:
 
 ```bash
-~/.codex/codex-bridge-thread-bindings.json
+~/.codex/codexremote-thread-bindings.json
 ```
 
 ### `POST /thread-bind`
@@ -224,13 +224,13 @@ You can also pass `threadId` directly instead of `externalThreadId`.
 - First-time pairing can use `?token=...`, but only to register the current browser as an allowed device.
 - After pairing, the bridge sets device cookies and normal access no longer needs the token in the URL.
 - Only paired devices can access `/codex-events`, `/codex-rpc`, and thread-management endpoints.
-- Device registrations are stored at `~/.codex/codex-bridge-devices.json`.
+- Device registrations are stored at `~/.codex/codexremote-devices.json`.
 - Do not expose the bridge port directly unless you intentionally want a second tunnel.
 
 - 首次配对可以通过 `?token=...` 完成，但它只用于把当前浏览器登记为允许设备。
 - 配对完成后，bridge 会写入设备 cookie，后续访问不再需要 URL 里的 token。
 - 只有已配对设备才能访问 `/codex-events`、`/codex-rpc` 和线程管理接口。
-- 设备注册信息默认保存在 `~/.codex/codex-bridge-devices.json`。
+- 设备注册信息默认保存在 `~/.codex/codexremote-devices.json`。
 - 除非你明确想做第二层暴露，否则不要直接公开 bridge 端口。
 
 ## Cloudflare Tunnel | 通过 Cloudflare 暴露接口
@@ -284,9 +284,9 @@ Manual named tunnel flow:
 3. Route DNS and run the tunnel.
 
 ```bash
-cloudflared tunnel create codex-bridge
-cloudflared tunnel route dns codex-bridge codex.example.com
-cloudflared tunnel --config ~/.cloudflared/config.yml run codex-bridge
+cloudflared tunnel create codexremote
+cloudflared tunnel route dns codexremote codex.example.com
+cloudflared tunnel --config ~/.cloudflared/config.yml run codexremote
 ```
 
 End-to-end flow:

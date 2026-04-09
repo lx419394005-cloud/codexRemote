@@ -8,7 +8,7 @@ loadLocalEnv();
 
 const HOME = os.homedir();
 const CLOUD_FLARED_DIR = path.join(HOME, '.cloudflared');
-const TUNNEL_NAME = process.env.CF_TUNNEL_NAME || 'codex-bridge';
+const TUNNEL_NAME = process.env.CF_TUNNEL_NAME || 'codexremote';
 const TUNNEL_DOMAIN = process.env.CF_TUNNEL_DOMAIN || process.argv[2] || '';
 const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT || '8080', 10);
 const CONFIG_PATH =

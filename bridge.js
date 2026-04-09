@@ -8,11 +8,11 @@ const bridgeDefaults = require('./config/bridge.json');
 
 const CONFIG = resolveBridgeConfig(process.env);
 const LOG_PATH = process.env.BRIDGE_DEBUG_LOG
-  || path.join(process.env.HOME || '/tmp', '.codex', 'log', 'codex-bridge-debug.log');
+  || path.join(process.env.HOME || '/tmp', '.codex', 'log', 'codexremote-debug.log');
 const DEVICE_STORE_PATH = process.env.BRIDGE_DEVICE_STORE_PATH
-  || path.join(process.env.HOME || '/tmp', '.codex', 'codex-bridge-devices.json');
+  || path.join(process.env.HOME || '/tmp', '.codex', 'codexremote-devices.json');
 const THREAD_BINDING_STORE_PATH = process.env.BRIDGE_THREAD_BINDING_STORE_PATH
-  || path.join(process.env.HOME || '/tmp', '.codex', 'codex-bridge-thread-bindings.json');
+  || path.join(process.env.HOME || '/tmp', '.codex', 'codexremote-thread-bindings.json');
 const DEVICE_ID_COOKIE = 'codex_bridge_device_id';
 const DEVICE_SECRET_COOKIE = 'codex_bridge_device_secret';
 const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -549,7 +549,7 @@ async function createCodexRpcSession(options = {}) {
   await request('initialize', {
     clientInfo: {
       name: 'codex_bridge_http',
-      title: 'Codex Bridge HTTP API',
+      title: 'codexRemote HTTP API',
       version: '1.0.0',
     },
   }, timeoutMs);
@@ -1253,7 +1253,7 @@ async function main() {
   });
 
   server.listen(CONFIG.PORT, () => {
-    console.log(`🚀 Codex Bridge API running on http://localhost:${CONFIG.PORT}`);
+    console.log(`🚀 codexRemote API running on http://localhost:${CONFIG.PORT}`);
     console.log(`🎯 Codex target: ${CONFIG.CODEX_WS}`);
     console.log(`📡 SSE: http://localhost:${CONFIG.PORT}${CONFIG.EVENTS_PATH}`);
     console.log(`📨 RPC: http://localhost:${CONFIG.PORT}${CONFIG.RPC_PATH}?clientId=...`);

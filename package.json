@@ -1,7 +1,7 @@
 {
-  "name": "codex-bridge",
+  "name": "codexremote",
   "version": "1.0.0",
-  "description": "A secure bridge to access Codex CLI remotely via JSON-RPC over WebSocket",
+  "description": "Remote web access to your local Codex environment through Cloudflare Tunnel",
   "main": "bridge.js",
   "scripts": {
     "dev": "next dev --webpack --hostname 0.0.0.0 --port ${FRONTEND_PORT:-8080}",
@@ -13,7 +13,7 @@
     "start:remote": "REMOTE_MODE=production node scripts/start-remote.mjs",
     "tunnel:setup:domain": "node scripts/setup-cf-domain.mjs",
     "tunnel:quick": "cloudflared tunnel --url ${NEXT_PUBLIC_TUNNEL_URL:-http://127.0.0.1:${FRONTEND_PORT:-8080}}",
-    "tunnel:named": "cloudflared tunnel --config ${CF_TUNNEL_CONFIG_PATH:-$HOME/.cloudflared/config-codex-bridge.yml} run ${CF_TUNNEL_NAME:-codex-bridge}"
+    "tunnel:named": "cloudflared tunnel --config ${CF_TUNNEL_CONFIG_PATH:-$HOME/.cloudflared/config-codexremote.yml} run ${CF_TUNNEL_NAME:-codexremote}"
   },
   "dependencies": {
     "http-proxy": "^1.18.1",

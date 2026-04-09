@@ -1,7 +1,7 @@
 {
-  "defaultName": "codex-bridge",
+  "defaultName": "codexremote",
   "defaultFrontendPort": 8080,
-  "defaultConfigPath": "~/.cloudflared/config-codex-bridge.yml",
+  "defaultConfigPath": "~/.cloudflared/config-codexremote.yml",
   "defaultTunnelId": "",
   "defaultDomain": "codex.example.com"
 }

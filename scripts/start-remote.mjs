@@ -10,10 +10,10 @@ const BRIDGE_PORT = parseInt(process.env.BRIDGE_PORT || '8081', 10);
 const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN || randomBytes(24).toString('base64url');
 const REMOTE_MODE = process.env.REMOTE_MODE || 'development';
 const CF_TUNNEL_MODE = process.env.CF_TUNNEL_MODE || 'named';
-const CF_TUNNEL_NAME = process.env.CF_TUNNEL_NAME || 'codex-bridge';
+const CF_TUNNEL_NAME = process.env.CF_TUNNEL_NAME || 'codexremote';
 const CF_TUNNEL_DOMAIN = process.env.CF_TUNNEL_DOMAIN || 'codex.example.com';
 const CF_TUNNEL_CONFIG_PATH =
-  process.env.CF_TUNNEL_CONFIG_PATH || `${process.env.HOME}/.cloudflared/config-codex-bridge.yml`;
+  process.env.CF_TUNNEL_CONFIG_PATH || `${process.env.HOME}/.cloudflared/config-codexremote.yml`;
 const ALLOWED_DEV_ORIGINS = process.env.ALLOWED_DEV_ORIGINS || CF_TUNNEL_DOMAIN;
 const TUNNEL_URL = process.env.NEXT_PUBLIC_TUNNEL_URL || `http://127.0.0.1:${FRONTEND_PORT}`;
 

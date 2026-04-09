@@ -6,7 +6,7 @@
   "defaultEventsPath": "/codex-events",
   "defaultRpcPath": "/codex-rpc",
   "storageKeys": {
-    "recentWorkspaces": "codex-bridge-recent-workspaces",
-    "settings": "codex-bridge-settings"
+    "recentWorkspaces": "codexremote-recent-workspaces",
+    "settings": "codexremote-settings"
   }
 }
